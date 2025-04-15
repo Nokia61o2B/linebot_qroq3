@@ -229,11 +229,12 @@ async def handle_message(event):
         reply_text = "抱歉，目前無法提供回應，請稍後再試。"
 
     try:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+        line_bot_api.push_message(user_id, TextSendMessage(reply_text))  # ✅ 用 push_message 回覆
     except LineBotApiError as e:
         print(f"LINE 回覆失敗: {e}")
 
     conversation_history[user_id].append({"role": "assistant", "content": reply_text})
+
 
 @handler.add(PostbackEvent)
 async def handle_postback(event):
