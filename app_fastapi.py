@@ -121,16 +121,19 @@ def update_line_webhook():
 
 router = APIRouter()
 
+# ✅ 修正版 LINE Webhook 端點
 @router.post("/callback")
 async def callback(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Line-Signature")
 
     try:
-        # ✅ 用 async 處理的方式觸發事件
-        await handler.asgi_app()(request.scope, request.receive, request._send)
+        # ✅ 呼叫同步的 handler.handle()（內部會觸發你註冊的 async 處理函式）
+        handler.handle(body.decode("utf-8"), signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     return JSONResponse(content={"message": "ok"})
     
