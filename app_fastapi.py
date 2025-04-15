@@ -16,6 +16,8 @@ from my_commands.partjob_gpt import partjob_gpt
 from my_commands.crypto_coin_gpt import crypto_gpt
 from my_commands.stock.stock_gpt import stock_gpt
 import re
+import uvicorn
+import asyncio
 
 app = FastAPI()
 
@@ -239,12 +241,18 @@ async def welcome(event):
 async def health_check():
     return {'status': 'OK'}
 
+# 啟動時更新 Webhook URL
+@app.on_event("startup")
+async def startup_event():
+    try:
+        await update_line_webhook()
+    except Exception as e:
+        print(f"更新 Webhook URL 失敗: {e}")
+
 # 啟動應用
 if __name__ == "__main__":
-    import uvicorn
     port = int(os.environ.get('PORT', 5000))
     try:
-        await update_line_webhook()  # 啟動時自動更新 Webhook URL
         uvicorn.run(app, host="0.0.0.0", port=port)
     except Exception as e:
         print(f"伺服器啟動失敗: {e}")
