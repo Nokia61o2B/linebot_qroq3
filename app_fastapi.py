@@ -228,7 +228,7 @@ async def handle_message(event):
         reply_text = "抱歉，目前無法提供回應，請稍後再試。"
 
     try:
-        await line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
     except LineBotApiError as e:
         print(f"LINE 回覆失敗: {e}")
 
