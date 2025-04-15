@@ -58,16 +58,17 @@ async def get_reply(messages):
     select_model = "gpt-4o-mini"
     print(f"free gpt:{select_model}")
     try:
-        completion = await client.chat.completions.create(
+        completion = await client.chat.completions.create(  # ✅ 這是 OpenAI 的 async client
             model=select_model,
             messages=messages,
             max_tokens=800  
         )
         reply = completion.choices[0].message.content
     except Exception as e:
-        print("Groq: partjob:")
+        print("OpenAI API 發生錯誤，嘗試使用 Groq:")
         try:
-            response = await groq_client.chat.completions.create(
+            # ❌ 不要 await，Groq 是同步的！
+            response = groq_client.chat.completions.create(
                 model="llama3-70b-8192",
                 messages=messages,
                 max_tokens=2000,
