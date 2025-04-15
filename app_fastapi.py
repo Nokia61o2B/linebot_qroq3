@@ -23,6 +23,15 @@ import httpx
 import os
 
 app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        update_line_webhook()
+    except Exception as e:
+        print(f"更新 Webhook URL 失敗: {e}")
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 # SET BASE URL
 base_url = os.getenv("BASE_URL")
@@ -109,21 +118,19 @@ def update_line_webhook():
         print(f"❌ 發生未知錯誤: {e}")
 
 # ✅ 處理 LINE Webhook 的 POST 請求
+# 修正 callback 路由
 @app.post("/callback")
-async def line_webhook(request: Request):
+async def callback(request: Request):
+    signature = request.headers.get('X-Line-Signature')
     body = await request.body()
-    signature = request.headers.get('X-Line-Signature', '')
-
-    # 驗證 LINE 簽章（必要的話請將此段加入）
-    channel_secret = os.getenv("CHANNEL_SECRET", "")
-    hash = hmac.new(channel_secret.encode('utf-8'), body, hashlib.sha256).digest()
-    computed_signature = base64.b64encode(hash).decode()
-
-    if signature != computed_signature:
-        raise HTTPException(status_code=403, detail="Invalid signature")
-
-    print("✅ 收到 LINE webhook payload：", body)
-    return JSONResponse(content={"message": "Received"}, status_code=200)
+    body_text = body.decode('utf-8')
+    
+    try:
+        handler.handle(body_text, signature)
+    except InvalidSignatureError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    
+    return JSONResponse(content={"message": "OK"}, status_code=200)
 
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
@@ -254,22 +261,10 @@ async def health_check():
 async def root():
     return {"message": "Service is live."}
     
-# ✅ 可選首頁 POST
-# 啟動應用
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    try:
-        # ✅ 用同步方式呼叫 update_line_webhook()
-        update_line_webhook()
-    except Exception as e:
-        print(f"更新 Webhook URL 失敗: {e}")
-    yield
-
-app = FastAPI(lifespan=lifespan)
 
 # 啟動應用
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 5000))
     try:
         uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
     except Exception as e:
