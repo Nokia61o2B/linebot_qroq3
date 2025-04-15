@@ -1,4 +1,4 @@
-fastapi==0.109.2
+fastapi[all]
 uvicorn==0.27.1
 Flask==2.2.0
 gunicorn
