@@ -75,7 +75,7 @@ def get_reply(messages):
                 temperature=1.2
             )
             reply = response.choices[0].message.content
-        except Groq.RateLimitError as rate_err:
+        except Exception as groq_err:
             time.sleep(15)  # 等待一段時間再重試
             response = groq_client.chat.completions.create(
                 model="llama3-70b-8192",
