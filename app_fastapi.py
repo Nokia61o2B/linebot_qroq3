@@ -133,9 +133,24 @@ async def callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     return JSONResponse(content={"message": "ok"})
+    
+app.include_router(router)  # ⚠️ 一定要包含這行
+# ✅ 修正版 LINE Webhook 處理訊息函式
+# ✅ 解決 coroutine 'handle_message' was never awaited 錯誤
+# ✅ 保留 async 用法，確保支援非同步 GPT API 呼叫與 LINE 回覆
 
-# 處理訊息
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage,
+    SourceGroup, SourceRoom
+)
+from linebot.exceptions import LineBotApiError
+import re
+
 @handler.add(MessageEvent, message=TextMessage)
+def handle_message_wrapper(event):
+    import asyncio
+    asyncio.create_task(handle_message(event))  # ✅ 建立 background task
+
 async def handle_message(event):
     global conversation_history
     user_id = event.source.user_id
@@ -145,92 +160,75 @@ async def handle_message(event):
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
 
     if is_group_or_room:
-        # 獲取 bot 的資訊
         bot_info = await line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
 
-        # 檢查訊息是否包含@標記
         if '@' in msg:
-            # 提取@後的文字
             at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
-            # 模糊匹配檢查機器人名稱
             if at_text.lower() not in bot_name.lower():
-                return  # 如果@後的文字不匹配機器人名稱，直接返回不處理
-            # 移除@和機器人名稱部分，只保留實際訊息內容
+                return
             msg = msg.replace(f'@{at_text}', '').strip()
         else:
-            return  # 如果沒有@標記，直接返回不處理
-        
-        # 如果移除後訊息為空，則不處理
+            return
+
         if not msg:
             return
 
-    # 初始化使用者的對話歷史
     if user_id not in conversation_history:
         conversation_history[user_id] = []
 
-    # 將訊息加入對話歷史
     conversation_history[user_id].append({"role": "user", "content": msg + ", 請以繁體中文回答我問題"})
 
-    # 台股代碼邏輯：必須以 4-6 個數字開頭，後面可選擇性有一個英文字母
     stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
-    # 美股代碼邏輯：必須以 1-5 個字母開頭
     stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
 
-    # 限制對話歷史長度
     if len(conversation_history[user_id]) > MAX_HISTORY_LEN * 2:
         conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY_LEN * 2:]
 
-    # 定義彩種關鍵字列表
     lottery_keywords = ["威力彩", "大樂透", "539", "雙贏彩", "3星彩", "三星彩", "4星彩", "四星彩", "38樂合彩", "39樂合彩", "49樂合彩", "運彩"]
 
-    # 判斷是否為彩種相關查詢
-    if any(keyword in msg for keyword in lottery_keywords):
-        reply_text = lottery_gpt(msg)  # 呼叫對應的彩種處理函數
-    elif msg.lower().startswith("大盤") or msg.lower().startswith("台股"):
-        reply_text = stock_gpt("大盤")
-    elif msg.lower().startswith("美盤") or msg.lower().startswith("美股"): 
-        reply_text = stock_gpt("美盤")
-    elif stock_code:
-        stock_id = stock_code.group()
-        reply_text = stock_gpt(stock_id)
-    elif stock_symbol:
-        stock_id = stock_symbol.group()
-        reply_text = stock_gpt(stock_id)
-    elif any(msg.lower().startswith(currency.lower()) for currency in ["金價", "金", "黃金", "gold"]):
-        reply_text = gold_gpt()
-    elif any(msg.lower().startswith(currency.lower()) for currency in ["鉑", "鉑金", "platinum", "白金"]):
-        reply_text = platinum_gpt()
-    elif msg.lower().startswith(tuple(["日幣", "日元", "jpy", "換日幣"])):
-        reply_text = money_gpt("JPY")
-    elif any(msg.lower().startswith(currency.lower()) for currency in ["美金", "usd", "美元", "換美金"]):
-        reply_text = money_gpt("USD")
-    elif msg.startswith("104:"):
-        reply_text = one04_gpt(msg[4:])
-    elif msg.startswith("pt:"):
-        reply_text = partjob_gpt(msg[3:])
-    elif msg.startswith("cb:") or msg.startswith("$:"):  # 處理加密貨幣查詢
-        coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
-        reply_text = crypto_gpt(coin_id)
-    else:
-        # 傳送最新對話歷史給 GPT
-        messages = conversation_history[user_id][-MAX_HISTORY_LEN:]
-        try:
-            reply_text = await get_reply(messages)  # 呼叫 GPT API 取得回應
-        except Exception as e:
-            reply_text = f" API 發生錯誤: {str(e)}"
+    try:
+        if any(keyword in msg for keyword in lottery_keywords):
+            reply_text = lottery_gpt(msg)
+        elif msg.lower().startswith("大盤") or msg.lower().startswith("台股"):
+            reply_text = stock_gpt("大盤")
+        elif msg.lower().startswith("美盤") or msg.lower().startswith("美股"):
+            reply_text = stock_gpt("美盤")
+        elif stock_code:
+            stock_id = stock_code.group()
+            reply_text = stock_gpt(stock_id)
+        elif stock_symbol:
+            stock_id = stock_symbol.group()
+            reply_text = stock_gpt(stock_id)
+        elif any(msg.lower().startswith(currency.lower()) for currency in ["金價", "金", "黃金", "gold"]):
+            reply_text = gold_gpt()
+        elif any(msg.lower().startswith(currency.lower()) for currency in ["鉑", "鉑金", "platinum", "白金"]):
+            reply_text = platinum_gpt()
+        elif msg.lower().startswith(tuple(["日幣", "日元", "jpy", "換日幣"])):
+            reply_text = money_gpt("JPY")
+        elif any(msg.lower().startswith(currency.lower()) for currency in ["美金", "usd", "美元", "換美金"]):
+            reply_text = money_gpt("USD")
+        elif msg.startswith("104:"):
+            reply_text = one04_gpt(msg[4:])
+        elif msg.startswith("pt:"):
+            reply_text = partjob_gpt(msg[3:])
+        elif msg.startswith("cb:") or msg.startswith("$:"):
+            coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
+            reply_text = crypto_gpt(coin_id)
+        else:
+            messages = conversation_history[user_id][-MAX_HISTORY_LEN:]
+            reply_text = await get_reply(messages)
+    except Exception as e:
+        reply_text = f"API 發生錯誤: {str(e)}"
 
-    # 如果 `reply_text` 為空，設定一個預設回應
     if not reply_text:
         reply_text = "抱歉，目前無法提供回應，請稍後再試。"
 
-    # 回應使用者
     try:
         await line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
     except LineBotApiError as e:
         print(f"LINE 回覆失敗: {e}")
 
-    # 將 GPT 的回應加入對話歷史
     conversation_history[user_id].append({"role": "assistant", "content": reply_text})
 
 @handler.add(PostbackEvent)
