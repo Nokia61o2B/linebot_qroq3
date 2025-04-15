@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
+from fastapi.responses import JSONResponse
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import PostbackEvent, TextSendMessage, MessageEvent, TextMessage
 from linebot.models import *
@@ -117,16 +118,22 @@ def update_line_webhook():
     except Exception as e:
         print(f"❌ 發生未知錯誤: {e}")
 
-# ✅ 處理 LINE Webhook 的 POST 請求
-# 修正 callback 路由
 @app.post("/callback")
 async def callback(request: Request):
-    # 這裡可以放 LINE Signature 驗證邏輯
-    # 比如從 header 抓取 x-line-signature 並比對
+    # 獲取 X-Line-Signature 頭信息
+    signature = request.headers.get('X-Line-Signature', '')
+    
+    # 取得 request body 作為文本
     body = await request.body()
+    body_text = body.decode("utf-8")
 
-    # 假設你這裡會做一些處理，這裡只做回應示意
-    return JSONResponse(content={"message": "OK"}, status_code=200)
+    # 處理 webhook 主體
+    try:
+        handler.handle(body_text, signature)
+    except InvalidSignatureError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    return JSONResponse(content={"message": "OK"})
 
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
