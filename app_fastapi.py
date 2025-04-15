@@ -242,9 +242,10 @@ async def health_check():
 # 啟動應用
 if __name__ == "__main__":
     import uvicorn
+    import asyncio
     port = int(os.environ.get('PORT', 5000))
     try:
-        await update_line_webhook()  # 啟動時自動更新 Webhook URL
+        asyncio.run(update_line_webhook())  # 使用 asyncio.run 來執行異步函數
         uvicorn.run(app, host="0.0.0.0", port=port)
     except Exception as e:
         print(f"伺服器啟動失敗: {e}")
