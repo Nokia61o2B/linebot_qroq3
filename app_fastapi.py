@@ -109,7 +109,7 @@ async def callback(request: Request):
     body_text = body.decode('utf-8')
     
     try:
-        handler.handle(body_text, signature)
+        await handler.handle(body_text, signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
     
@@ -242,10 +242,9 @@ async def health_check():
 # 啟動應用
 if __name__ == "__main__":
     import uvicorn
-    import asyncio
     port = int(os.environ.get('PORT', 5000))
     try:
-        asyncio.run(update_line_webhook())  # 使用 asyncio.run 來執行異步函數
+        await update_line_webhook()  # 啟動時自動更新 Webhook URL
         uvicorn.run(app, host="0.0.0.0", port=port)
     except Exception as e:
         print(f"伺服器啟動失敗: {e}")
