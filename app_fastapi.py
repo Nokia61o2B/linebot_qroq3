@@ -241,18 +241,25 @@ async def welcome(event):
 async def health_check():
     return {'status': 'OK'}
 
-# 啟動時更新 Webhook URL
-@app.on_event("startup")
-async def startup_event():
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 啟動時執行
     try:
         await update_line_webhook()
     except Exception as e:
         print(f"更新 Webhook URL 失敗: {e}")
+    yield
+    # 關閉時執行
+    pass
+
+app = FastAPI(lifespan=lifespan)
 
 # 啟動應用
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     try:
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
     except Exception as e:
         print(f"伺服器啟動失敗: {e}")
