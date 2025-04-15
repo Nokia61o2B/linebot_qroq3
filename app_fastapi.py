@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI, APIRouter, Request, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 from linebot import LineBotApi, WebhookHandler
 from linebot.models import PostbackEvent, TextSendMessage, MessageEvent, TextMessage
@@ -118,22 +118,21 @@ def update_line_webhook():
     except Exception as e:
         print(f"❌ 發生未知錯誤: {e}")
 
-@app.post("/callback")
-async def callback(request: Request):
-    # 獲取 X-Line-Signature 頭信息
-    signature = request.headers.get('X-Line-Signature', '')
-    
-    # 取得 request body 作為文本
-    body = await request.body()
-    body_text = body.decode("utf-8")
 
-    # 處理 webhook 主體
+router = APIRouter()
+
+@router.post("/callback")
+async def callback(request: Request):
+    body = await request.body()
+    signature = request.headers.get("X-Line-Signature")
+
     try:
-        handler.handle(body_text, signature)
+        # ✅ 用 async 處理的方式觸發事件
+        await handler.asgi_app()(request.scope, request.receive, request._send)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    return JSONResponse(content={"message": "OK"})
+    return JSONResponse(content={"message": "ok"})
 
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
