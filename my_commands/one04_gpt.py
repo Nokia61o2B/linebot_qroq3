@@ -2,7 +2,6 @@
 import os
 import openai
 from groq import Groq
-from groq._exceptions import HTTPStatusError
 import requests
 import time
 import random
