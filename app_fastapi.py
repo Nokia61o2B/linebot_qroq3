@@ -18,6 +18,7 @@ from my_commands.stock.stock_gpt import stock_gpt
 import re
 import uvicorn
 import asyncio
+from contextlib import asynccontextmanager
 
 app = FastAPI()
 
@@ -65,25 +66,26 @@ async def get_reply(messages):
             reply = f"OpenAI API 發生錯誤，GROQ API 發生錯誤: {str(groq_err)}"
     return reply
 
-# 要檢查 LINE Webhook URL 的函數
-async def check_line_webhook():
+import requests  # 這邊保留 requests，不改成 aiohttp
+
+# ✅ 改為同步版本
+def check_line_webhook():
     url = "https://api.line.me/v2/bot/channel/webhook/endpoint"
     headers = {
         "Authorization": f"Bearer {os.getenv('CHANNEL_ACCESS_TOKEN')}"
     }
-    async with requests.get(url, headers=headers) as response:
-        if response.status_code == 200:
-            current_webhook = response.json().get("endpoint", "無法取得 Webhook URL")
-            print(f"當前 Webhook URL: {current_webhook}")
-            return current_webhook
-        else:
-            print(f"檢查 Webhook URL 失敗，狀態碼: {response.status_code}, 原因: {response.text}")
-            return None
+    response = requests.get(url, headers=headers)
+    if response.status_code == 200:
+        current_webhook = response.json().get("endpoint", "無法取得 Webhook URL")
+        print(f"當前 Webhook URL: {current_webhook}")
+        return current_webhook
+    else:
+        print(f"檢查 Webhook URL 失敗，狀態碼: {response.status_code}, 原因: {response.text}")
+        return None
 
-# 更新 LINE Webhook URL 的函數
-async def update_line_webhook():
+def update_line_webhook():
     new_webhook_url = base_url + "/callback"
-    current_webhook_url = await check_line_webhook()
+    current_webhook_url = check_line_webhook()
 
     if current_webhook_url != new_webhook_url:
         url = "https://api.line.me/v2/bot/channel/webhook/endpoint"
@@ -94,12 +96,11 @@ async def update_line_webhook():
         payload = {
             "endpoint": new_webhook_url
         }
-
-        async with requests.put(url, headers=headers, json=payload) as response:
-            if response.status_code == 200:
-                print(f"Webhook URL 更新成功: {new_webhook_url}")
-            else:
-                print(f"更新失敗，狀態碼: {response.status_code}, 原因: {response.text}")
+        response = requests.put(url, headers=headers, json=payload)
+        if response.status_code == 200:
+            print(f"Webhook URL 更新成功: {new_webhook_url}")
+        else:
+            print(f"更新失敗，狀態碼: {response.status_code}, 原因: {response.text}")
     else:
         print("當前的 Webhook URL 已是最新，無需更新。")
 
@@ -240,19 +241,16 @@ async def welcome(event):
 @app.get('/healthz')
 async def health_check():
     return {'status': 'OK'}
-
-from contextlib import asynccontextmanager
-
+    
+# 啟動應用
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 啟動時執行
     try:
-        await update_line_webhook()
+        # ✅ 用同步方式呼叫 update_line_webhook()
+        update_line_webhook()
     except Exception as e:
         print(f"更新 Webhook URL 失敗: {e}")
     yield
-    # 關閉時執行
-    pass
 
 app = FastAPI(lifespan=lifespan)
 
