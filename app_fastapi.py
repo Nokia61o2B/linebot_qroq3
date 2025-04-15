@@ -241,11 +241,17 @@ async def welcome(event):
     message = TextSendMessage(text=f'{name} 歡迎加入')
     await line_bot_api.reply_message(event.reply_token, message)
 
-# 健康檢查端點
-@app.get('/healthz')
+# ✅ Render 預設健康檢查路徑
+@app.get("/healthz")
 async def health_check():
-    return {'status': 'OK'}
+    return {"status": "ok"}
+
+# ✅ 可選首頁 GET
+@app.get("/")
+async def root():
+    return {"message": "Service is live."}
     
+# ✅ 可選首頁 POST
 # 啟動應用
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -260,7 +266,7 @@ app = FastAPI(lifespan=lifespan)
 
 # 啟動應用
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get('PORT', 10000))
     try:
         uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
     except Exception as e:
