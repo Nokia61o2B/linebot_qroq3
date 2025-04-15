@@ -11,5 +11,5 @@ beautifulsoup4
 yfinance
 pandas
 numpy
-openai>=1.0.0
+openai==0.28
 lxml
