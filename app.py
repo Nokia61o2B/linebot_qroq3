@@ -148,12 +148,17 @@ def handle_message(event):
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
 
-        # 在群組/聊天室中檢查訊息是否包含機器人名稱
-        if bot_name.lower() not in msg.lower():
-            return  # 如果沒有包含機器人名稱，直接返回不處理
-
-        # 移除機器人名稱的部分，只保留實際訊息內容
-        msg = msg.replace(bot_name, "").replace("@", "").strip()
+        # 檢查訊息是否包含@標記
+        if '@' in msg:
+            # 提取@後的文字
+            at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
+            # 模糊匹配檢查機器人名稱
+            if at_text.lower() not in bot_name.lower():
+                return  # 如果@後的文字不匹配機器人名稱，直接返回不處理
+            # 移除@和機器人名稱部分，只保留實際訊息內容
+            msg = msg.replace(f'@{at_text}', '').strip()
+        else:
+            return  # 如果沒有@標記，直接返回不處理
         
         # 如果移除後訊息為空，則不處理
         if not msg:
