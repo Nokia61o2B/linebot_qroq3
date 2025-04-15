@@ -28,15 +28,18 @@ def get_reply(messages):
             messages=messages
         )
         reply = response["choices"][0]["message"]["content"]
+
     except openai.OpenAIError as openai_err:
         try:
             request_tokens = sum(len(message['content']) for message in messages)
             current_time = time.time()
+
             if groq_tokens_used + request_tokens > GROQ_RATE_LIMIT:
                 wait_time = GROQ_REQUEST_INTERVAL - (current_time - groq_last_request_time)
                 if wait_time > 0:
-                    print(f"超過速率限制，等待 {wait_time} 秒...")
+                    print(f"超過速率限制，等待 {wait_time:.2f} 秒...")
                     time.sleep(wait_time)
+
                 groq_tokens_used = 0
                 groq_last_request_time = time.time()
 
@@ -48,10 +51,25 @@ def get_reply(messages):
             )
             reply = response.choices[0].message.content
             groq_tokens_used += request_tokens
-        except HTTPStatusError as http_err:
-            reply = f"GROQ API 發生 HTTP 錯誤（{http_err.response.status_code}）: {http_err.response.text}"
+
         except Exception as groq_err:
-            reply = f"OpenAI API 發生錯誤: {str(openai_err)}，GROQ API 發生錯誤: {str(groq_err)}"
+            # ✅ 用字串偵測 RateLimit（429）或 fallback 錯誤訊息
+            if "429" in str(groq_err) or "rate limit" in str(groq_err).lower():
+                print("GROQ API 速率限制，等待 15 秒再試...")
+                time.sleep(15)
+                try:
+                    response = groq_client.chat.completions.create(
+                        model="mixtral-8x7b-32768",
+                        messages=messages,
+                        max_tokens=1500,
+                        temperature=1.2
+                    )
+                    reply = response.choices[0].message.content
+                except Exception as second_err:
+                    reply = f"重試 GROQ 仍失敗: {str(second_err)}"
+            else:
+                reply = f"OpenAI API 發生錯誤: {str(openai_err)}，GROQ API 發生錯誤: {str(groq_err)}"
+
     return reply
 
 class Job104Spider:
