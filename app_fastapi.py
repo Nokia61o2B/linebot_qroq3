@@ -228,8 +228,14 @@ async def handle_message(event):
     if not reply_text:
         reply_text = "抱歉，目前無法提供回應，請稍後再試。"
 
+    # ✅ 回應使用者
     try:
-        line_bot_api.push_message(user_id, TextSendMessage(reply_text))  # ✅ 用 push_message 回覆
+        if isinstance(event.source, (SourceGroup, SourceRoom)):
+            # 在群組或聊天室中 → 必須用 reply_message + reply_token
+            await line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+        else:
+            # 一對一私訊 → 可用 push_message
+            line_bot_api.push_message(user_id, TextSendMessage(reply_text))
     except LineBotApiError as e:
         print(f"LINE 回覆失敗: {e}")
 
