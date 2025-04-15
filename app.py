@@ -140,6 +140,21 @@ def handle_message(event):
     user_id = event.source.user_id
     msg = event.message.text
 
+    # 獲取 bot 的資訊
+    bot_info = line_bot_api.get_bot_info()
+    bot_name = bot_info.display_name
+
+    # 檢查訊息是否有 @ 機器人
+    if not f"@{bot_name}" in msg:
+        return  # 如果沒有 @ 機器人，直接返回不處理
+
+    # 移除 @機器人 的部分，只保留實際訊息內容
+    msg = msg.replace(f"@{bot_name}", "").strip()
+    
+    # 如果移除 @ 後訊息為空，則不處理
+    if not msg:
+        return
+
     # 初始化使用者的對話歷史
     if user_id not in conversation_history:
         conversation_history[user_id] = []
