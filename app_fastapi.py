@@ -19,6 +19,8 @@ import re
 import uvicorn
 import asyncio
 from contextlib import asynccontextmanager
+import httpx
+import os
 
 app = FastAPI()
 
@@ -83,26 +85,28 @@ def check_line_webhook():
         print(f"檢查 Webhook URL 失敗，狀態碼: {response.status_code}, 原因: {response.text}")
         return None
 
+# 定義 LINE Webhook 端點
+LINE_WEBHOOK_ENDPOINT = "https://api.line.me/v2/bot/channel/webhook/endpoint"
 def update_line_webhook():
-    new_webhook_url = base_url + "/callback"
-    current_webhook_url = check_line_webhook()
+    """同步更新 LINE Webhook URL"""
+    access_token = os.getenv("CHANNEL_ACCESS_TOKEN")
+    base_url = os.getenv("BASE_URL")
 
-    if current_webhook_url != new_webhook_url:
-        url = "https://api.line.me/v2/bot/channel/webhook/endpoint"
-        headers = {
-            "Authorization": f"Bearer {os.getenv('CHANNEL_ACCESS_TOKEN')}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "endpoint": new_webhook_url
-        }
-        response = requests.put(url, headers=headers, json=payload)
-        if response.status_code == 200:
-            print(f"Webhook URL 更新成功: {new_webhook_url}")
-        else:
-            print(f"更新失敗，狀態碼: {response.status_code}, 原因: {response.text}")
-    else:
-        print("當前的 Webhook URL 已是最新，無需更新。")
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    json_data = {"endpoint": f"{base_url}/callback"}
+
+    try:
+        with httpx.Client() as client:
+            res = client.put(LINE_WEBHOOK_ENDPOINT, headers=headers, json=json_data)
+            res.raise_for_status()
+            print(f"✅ Webhook 更新成功: {res.status_code}")
+    except httpx.HTTPStatusError as e:
+        print(f"❌ Webhook 更新失敗: {e.response.status_code} {e.response.text}")
+    except Exception as e:
+        print(f"❌ 發生未知錯誤: {e}")
 
 # 監聽所有來自 /callback 的 Post Request
 @app.post("/callback")
