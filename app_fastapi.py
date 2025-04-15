@@ -164,7 +164,7 @@ async def handle_message(event):
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
 
     if is_group_or_room:
-        bot_info = await line_bot_api.get_bot_info()
+        bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
 
         if '@' in msg:
