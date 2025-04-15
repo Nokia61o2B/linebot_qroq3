@@ -108,19 +108,22 @@ def update_line_webhook():
     except Exception as e:
         print(f"❌ 發生未知錯誤: {e}")
 
-# 監聽所有來自 /callback 的 Post Request
+# ✅ 處理 LINE Webhook 的 POST 請求
 @app.post("/callback")
-async def callback(request: Request):
-    signature = request.headers.get('X-Line-Signature')
+async def line_webhook(request: Request):
     body = await request.body()
-    body_text = body.decode('utf-8')
-    
-    try:
-        await handler.handle(body_text, signature)
-    except InvalidSignatureError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
-    
-    return 'OK'
+    signature = request.headers.get('X-Line-Signature', '')
+
+    # 驗證 LINE 簽章（必要的話請將此段加入）
+    channel_secret = os.getenv("CHANNEL_SECRET", "")
+    hash = hmac.new(channel_secret.encode('utf-8'), body, hashlib.sha256).digest()
+    computed_signature = base64.b64encode(hash).decode()
+
+    if signature != computed_signature:
+        raise HTTPException(status_code=403, detail="Invalid signature")
+
+    print("✅ 收到 LINE webhook payload：", body)
+    return JSONResponse(content={"message": "Received"}, status_code=200)
 
 # 處理訊息
 @handler.add(MessageEvent, message=TextMessage)
