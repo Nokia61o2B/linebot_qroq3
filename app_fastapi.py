@@ -21,7 +21,7 @@ from my_commands.crypto_coin_gpt import crypto_gpt
 from my_commands.stock.stock_gpt import stock_gpt
 
 app = FastAPI()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
