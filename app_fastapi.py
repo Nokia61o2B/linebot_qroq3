@@ -261,11 +261,16 @@ async def handle_message(event):
     has_high_english = english_ratio > 0.1
 
     try:
+        # 立即回覆訊息，避免token過期
         line_bot_api.reply_message(event.reply_token, reply_message)
+        # 成功回覆後再更新對話歷史
+        conversation_history[user_id].append({"role": "assistant", "content": reply_text})
     except LineBotApiError as e:
         print(f"❌ 回覆訊息失敗: {e}")
-
-    conversation_history[user_id].append({"role": "assistant", "content": reply_text})
+        # 如果是token過期，記錄錯誤但不更新對話歷史
+        if "Invalid reply token" in str(e):
+            print("Reply token已過期，請確保及時回覆訊息")
+        return
 
 @handler.add(PostbackEvent)
 async def handle_postback(event):

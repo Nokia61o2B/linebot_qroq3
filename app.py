@@ -228,13 +228,16 @@ def handle_message(event):
 
     # 回應使用者
     try:
+        # 立即回覆訊息，避免token過期
         line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+        # 成功回覆後再更新對話歷史
+        conversation_history[user_id].append({"role": "assistant", "content": reply_text})
     except LineBotApiError as e:
         print(f"LINE 回覆失敗: {e}")
-        # 這裡可以根據需要增加錯誤處理
-
-    # 將 GPT 的回應加入對話歷史
-    conversation_history[user_id].append({"role": "assistant", "content": reply_text})
+        # 如果是token過期，記錄錯誤但不更新對話歷史
+        if "Invalid reply token" in str(e):
+            print("Reply token已過期，請確保及時回覆訊息")
+        return
 
 
 @handler.add(PostbackEvent)
