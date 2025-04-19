@@ -194,13 +194,15 @@ async def handle_message(event):
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成正體正體中文")))
         
     # 其他的快速回覆按鈕在所有情況下都顯示
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="台股大盤", text="大盤")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美股大盤", text="美股")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="大樂透", text="大樂透")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="威力彩", text="威力彩")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="金價", text="金價")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="日元", text="JPY")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美元", text="USD")))
+    # 根據是否為群組聊天決定是否添加@bot_name前綴
+    prefix = f"@{bot_name} " if is_group_or_room else ""
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")))
+    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD")))
 
     if quick_reply_items:
         reply_message = TextSendMessage(text=reply_text, quick_reply=QuickReply(items=quick_reply_items))
