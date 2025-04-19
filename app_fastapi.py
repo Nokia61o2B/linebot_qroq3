@@ -139,13 +139,6 @@ async def handle_message(event):
             reply_text = stock_gpt("大盤")
         elif msg.lower().startswith("美盤") or msg.lower().startswith("美股"):
             reply_text = stock_gpt("美盤")
-        elif msg.startswith("cb:") or msg.startswith("$:"):
-            coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
-            reply_text = crypto_gpt(coin_id)
-        elif stock_code:
-            reply_text = stock_gpt(stock_code.group())
-        elif stock_symbol:
-            reply_text = stock_gpt(stock_symbol.group())
         elif any(msg.lower().startswith(k.lower()) for k in ["金價", "黃金", "gold"]):
             reply_text = gold_gpt()
         elif any(msg.lower().startswith(k.lower()) for k in ["鉑", "platinum"]):
@@ -154,6 +147,13 @@ async def handle_message(event):
             reply_text = money_gpt("JPY")
         elif any(msg.lower().startswith(k.lower()) for k in ["美金", "usd"]):
             reply_text = money_gpt("USD")
+        elif msg.startswith("cb:") or msg.startswith("$:"):
+            coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
+            reply_text = crypto_gpt(coin_id)
+        elif stock_code:
+            reply_text = stock_gpt(stock_code.group())
+        elif stock_symbol:
+            reply_text = stock_gpt(stock_symbol.group())
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         elif msg.startswith("pt:"):
