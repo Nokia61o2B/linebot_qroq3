@@ -191,7 +191,7 @@ async def handle_message(event):
     quick_reply_items = []
     
     if has_high_english:
-        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成正體正體中文")))
+        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
         
     # 其他的快速回覆按鈕在所有情況下都顯示
     # 根據是否為群組聊天決定是否添加@bot_name前綴
