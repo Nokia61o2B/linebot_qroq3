@@ -120,29 +120,83 @@ async def handle_message(event):
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
+    reply_text = ""
 
-    if not is_group_or_room:            #個人
-        show_loading_animation(user_id)
-    else:                               #群組 @名子識別  ==> 只有@名子 才會回應
+    # 處理群組消息
+    if is_group_or_room:
         if not msg.startswith('@'):
             return
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
+        if '@' in msg:
+            at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
+            if at_text.lower() not in bot_name.lower():
+                return
+            msg = msg.replace(f'@{at_text}', '').strip()
+            if not msg:
+                return
+    else:
+        # 在個人聊天時顯示載入動畫
+        show_loading_animation(user_id)
 
+    # 初始化對話歷史
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
 
-    # 計算英文比例並設置快速回覆按鈕
+    conversation_history[user_id].append({"role": "user", "content": msg + ", 請以繁體中文回答我問題"})
+
+    # 限制對話歷史長度
+    if len(conversation_history[user_id]) > MAX_HISTORY_LEN * 2:
+        conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY_LEN * 2:]
+
+    # 處理不同類型的查詢
+    try:
+        stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
+        stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
+
+        if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
+            reply_text = lottery_gpt(msg)
+        elif msg.lower().startswith(("大盤", "台股")):
+            reply_text = stock_gpt("大盤")
+        elif msg.lower().startswith(("美盤", "美股")):
+            reply_text = stock_gpt("美盤")
+        elif msg.startswith("pt:"):
+            reply_text = partjob_gpt(msg[3:])
+        elif any(msg.lower().startswith(k.lower()) for k in ["金價", "黃金", "gold"]):
+            reply_text = gold_gpt()
+        elif any(msg.lower().startswith(k.lower()) for k in ["鉑", "platinum"]):
+            reply_text = platinum_gpt()
+        elif any(msg.lower().startswith(k.lower()) for k in ["日幣", "jpy"]):
+            reply_text = money_gpt("JPY")
+        elif any(msg.lower().startswith(k.lower()) for k in ["美金", "usd"]):
+            reply_text = money_gpt("USD")
+        elif msg.startswith(("cb:", "$:")):
+            coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
+            reply_text = crypto_gpt(coin_id)
+        elif stock_code:
+            reply_text = stock_gpt(stock_code.group())
+        elif stock_symbol:
+            reply_text = stock_gpt(stock_symbol.group())
+        elif msg.startswith("104:"):
+            reply_text = one04_gpt(msg[4:])
+        else:
+            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+    except Exception as e:
+        reply_text = f"API 發生錯誤: {str(e)}"
+
+    if not reply_text:
+        reply_text = "抱歉，目前無法提供回應，請稍後再試。"
+
+    # 設置快速回覆按鈕
     english_ratio = calculate_english_ratio(reply_text)
     has_high_english = english_ratio > 0.1
     quick_reply_items = []
     
-    # 如果英文比例超過10%，添加翻譯按鈕
     if has_high_english:
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
     
-    # 根據是否為群組聊天決定是否添加@bot_name前綴
     prefix = f"@{bot_name} " if is_group_or_room else ""
     
-    # 添加其他快速回覆按鈕
     quick_reply_items.extend([
         QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
         QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
@@ -153,23 +207,10 @@ async def handle_message(event):
         QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
     ])
 
-    # 設置回覆訊息
-    if quick_reply_items:
-        reply_message = TextSendMessage(text=reply_text, quick_reply=QuickReply(items=quick_reply_items))
-    else:
-        reply_message = TextSendMessage(text=reply_text)
-
-
-        if '@' in msg:
-            at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
-            if at_text.lower() not in bot_name.lower():
-                return
-            msg = msg.replace(f'@{at_text}', '').strip()
-        else:
-            return
-
-        if not msg:
-            return
+    reply_message = TextSendMessage(
+        text=reply_text,
+        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
+    )
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
