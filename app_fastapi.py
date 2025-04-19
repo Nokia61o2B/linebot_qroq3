@@ -129,6 +129,37 @@ async def handle_message(event):
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
 
+
+    # 計算英文比例並設置快速回覆按鈕
+    english_ratio = calculate_english_ratio(reply_text)
+    has_high_english = english_ratio > 0.1
+    quick_reply_items = []
+    
+    # 如果英文比例超過10%，添加翻譯按鈕
+    if has_high_english:
+        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
+    
+    # 根據是否為群組聊天決定是否添加@bot_name前綴
+    prefix = f"@{bot_name} " if is_group_or_room else ""
+    
+    # 添加其他快速回覆按鈕
+    quick_reply_items.extend([
+        QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
+        QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
+        QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")),
+        QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
+        QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
+        QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
+        QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
+    ])
+
+    # 設置回覆訊息
+    if quick_reply_items:
+        reply_message = TextSendMessage(text=reply_text, quick_reply=QuickReply(items=quick_reply_items))
+    else:
+        reply_message = TextSendMessage(text=reply_text)
+
+
         if '@' in msg:
             at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
             if at_text.lower() not in bot_name.lower():
@@ -187,27 +218,6 @@ async def handle_message(event):
 
     english_ratio = calculate_english_ratio(reply_text)
     has_high_english = english_ratio > 0.1
-
-    quick_reply_items = []
-    
-    if has_high_english:
-        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
-        
-    # 其他的快速回覆按鈕在所有情況下都顯示
-    # 根據是否為群組聊天決定是否添加@bot_name前綴
-    prefix = f"@{bot_name} " if is_group_or_room else ""
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")))
-    quick_reply_items.append(QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD")))
-
-    if quick_reply_items:
-        reply_message = TextSendMessage(text=reply_text, quick_reply=QuickReply(items=quick_reply_items))
-    else:
-        reply_message = TextSendMessage(text=reply_text)
 
     try:
         line_bot_api.reply_message(event.reply_token, reply_message)
