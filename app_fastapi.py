@@ -38,6 +38,8 @@ handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 conversation_history = {}
 MAX_HISTORY_LEN = 10
+# 新增助理應答狀態追蹤
+assistant_status = {}
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")
 
@@ -116,11 +118,24 @@ def calculate_english_ratio(text):
     return english_chars / total_chars if total_chars > 0 else 0
 
 async def handle_message(event):
-    global conversation_history
+    global conversation_history, assistant_status
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
     reply_text = ""
+
+    # 初始化助理應答狀態
+    if user_id not in assistant_status:
+        assistant_status[user_id] = False
+
+    # 處理助理應答開關指令
+    if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
+        assistant_status[user_id] = msg.strip() == "助理應答[on]"
+        reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
+    else:
+        # 移除這個限制，讓助理可以回答所有問題
+        # if not assistant_status[user_id] and not any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩", "大盤", "台股", "美盤", "美股", "金價", "黃金", "gold"]):
+        #     return
 
     # 處理群組消息
     if is_group_or_room:
@@ -192,6 +207,17 @@ async def handle_message(event):
     has_high_english = english_ratio > 0.1
     quick_reply_items = []
     
+    # 添加助理應答開關按鈕
+    current_status = assistant_status.get(user_id, False)
+    quick_reply_items.append(
+        QuickReplyButton(
+            action=MessageAction(
+                label=f"助理應答[{'off' if current_status else 'on'}]",
+                text=f"助理應答[{'off' if current_status else 'on'}]"
+            )
+        )
+    )
+    
     if has_high_english:
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
     
@@ -203,8 +229,8 @@ async def handle_message(event):
         QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")),
         QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
         QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
-        QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
-        QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
+        # QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
+        # QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
     ])
 
     reply_message = TextSendMessage(
