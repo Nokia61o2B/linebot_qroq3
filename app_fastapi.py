@@ -36,10 +36,11 @@ base_url = os.getenv("BASE_URL")
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# 修改全局變數，新增群組共用的助理應答狀態
 conversation_history = {}
 MAX_HISTORY_LEN = 10
-# 新增助理應答狀態追蹤
 assistant_status = {}
+group_assistant_status = False  # 新增群組共用的開關狀態
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")
 
@@ -118,97 +119,30 @@ def calculate_english_ratio(text):
     return english_chars / total_chars if total_chars > 0 else 0
 
 async def handle_message(event):
-    global conversation_history, assistant_status
+    global conversation_history, assistant_status, group_assistant_status
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
     reply_text = ""
 
-    # 初始化助理應答狀態
-    if user_id not in assistant_status:
-        assistant_status[user_id] = False
-
-    # 處理助理應答開關指令
-    if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
-        assistant_status[user_id] = msg.strip() == "助理應答[on]"
-        reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
-    else:
-        # 移除這個限制，讓助理可以回答所有問題
-        # if not assistant_status[user_id] and not any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩", "大盤", "台股", "美盤", "美股", "金價", "黃金", "gold"]):
-        #     return
-
-    # 處理群組消息
+    # 根據是否為群組聊天使用不同的狀態追蹤
     if is_group_or_room:
-        if not msg.startswith('@'):
-            return
-        bot_info = line_bot_api.get_bot_info()
-        bot_name = bot_info.display_name
-        if '@' in msg:
-            at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
-            if at_text.lower() not in bot_name.lower():
-                return
-            msg = msg.replace(f'@{at_text}', '').strip()
-            if not msg:
-                return
+        # 處理群組的助理應答開關指令
+        if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
+            group_assistant_status = msg.strip() == "助理應答[on]"
+            reply_text = f"群組助理應答已{'開啟' if group_assistant_status else '關閉'}"
     else:
-        # 在個人聊天時顯示載入動畫
-        show_loading_animation(user_id)
+        # 個人聊天使用個人狀態
+        if user_id not in assistant_status:
+            assistant_status[user_id] = False
+        if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
+            assistant_status[user_id] = msg.strip() == "助理應答[on]"
+            reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
 
-    # 初始化對話歷史
-    if user_id not in conversation_history:
-        conversation_history[user_id] = []
+    # ... existing code ...
 
-    conversation_history[user_id].append({"role": "user", "content": msg + ", 請以繁體中文回答我問題"})
-
-    # 限制對話歷史長度
-    if len(conversation_history[user_id]) > MAX_HISTORY_LEN * 2:
-        conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY_LEN * 2:]
-
-    # 處理不同類型的查詢
-    try:
-        stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
-        stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
-
-        if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
-            reply_text = lottery_gpt(msg)
-        elif msg.lower().startswith(("大盤", "台股")):
-            reply_text = stock_gpt("大盤")
-        elif msg.lower().startswith(("美盤", "美股")):
-            reply_text = stock_gpt("美盤")
-        elif msg.startswith("pt:"):
-            reply_text = partjob_gpt(msg[3:])
-        elif any(msg.lower().startswith(k.lower()) for k in ["金價", "黃金", "gold"]):
-            reply_text = gold_gpt()
-        elif any(msg.lower().startswith(k.lower()) for k in ["鉑", "platinum"]):
-            reply_text = platinum_gpt()
-        elif any(msg.lower().startswith(k.lower()) for k in ["日幣", "jpy"]):
-            reply_text = money_gpt("JPY")
-        elif any(msg.lower().startswith(k.lower()) for k in ["美金", "usd"]):
-            reply_text = money_gpt("USD")
-        elif msg.startswith(("cb:", "$:")):
-            coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
-            reply_text = crypto_gpt(coin_id)
-        elif stock_code:
-            reply_text = stock_gpt(stock_code.group())
-        elif stock_symbol:
-            reply_text = stock_gpt(stock_symbol.group())
-        elif msg.startswith("104:"):
-            reply_text = one04_gpt(msg[4:])
-        else:
-            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
-    except Exception as e:
-        reply_text = f"API 發生錯誤: {str(e)}"
-
-    if not reply_text:
-        reply_text = "抱歉，目前無法提供回應，請稍後再試。"
-
-    # 設置快速回覆按鈕
-    english_ratio = calculate_english_ratio(reply_text)
-    has_high_english = english_ratio > 0.1
-    quick_reply_items = []
-    
-    # 添加助理應答開關按鈕
-    current_status = assistant_status.get(user_id, False)
+    # 設置快速回覆按鈕時根據聊天類型選擇狀態
+    current_status = group_assistant_status if is_group_or_room else assistant_status.get(user_id, False)
     quick_reply_items.append(
         QuickReplyButton(
             action=MessageAction(
@@ -217,7 +151,7 @@ async def handle_message(event):
             )
         )
     )
-    
+
     if has_high_english:
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
     
