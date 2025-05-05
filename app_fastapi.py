@@ -128,21 +128,30 @@ async def handle_message(event):
     # 初始化 quick_reply_items 列表
     quick_reply_items = []
 
-    # 根據是否為群組聊天使用不同的狀態追蹤
+    # 處理群組消息
     if is_group_or_room:
-        # 獲取 bot 的資訊
-        bot_info = await line_bot_api.get_bot_info()
+        bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
         
-        # 處理群組的助理應答開關指令
+        # 處理助理應答開關指令
         if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
             group_assistant_status = msg.strip() == "助理應答[on]"
             reply_text = f"群組助理應答已{'開啟' if group_assistant_status else '關閉'}"
+        else:
+            # 根據助理應答狀態決定是否需要 @ 標記
+            if not group_assistant_status:
+                # 關閉狀態：需要 @ 才回應
+                if not msg.startswith('@'):
+                    return
+                if '@' in msg:
+                    at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
+                    if at_text.lower() not in bot_name.lower():
+                        return
+                    msg = msg.replace(f'@{at_text}', '').strip()
+            # 開啟狀態：不需要 @ 直接回應
     else:
-        bot_name = ""  # 個人聊天不需要 bot 名稱
-        # 個人聊天使用個人狀態
-        if user_id not in assistant_status:
-            assistant_status[user_id] = False
+        # 個人聊天一律回應
+        bot_name = ""
         if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
             assistant_status[user_id] = msg.strip() == "助理應答[on]"
             reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
