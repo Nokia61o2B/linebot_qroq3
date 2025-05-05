@@ -153,19 +153,17 @@ async def handle_message(event):
         bot_name = ""  # 個人聊天不需要 bot 名稱
 
     # 設置快速回覆按鈕時根據聊天類型選擇狀態
-    current_status = group_assistant_status if is_group_or_room else False
-    quick_reply_items.append(
-        QuickReplyButton(
-            action=MessageAction(
-                label=f"助理應答[{'off' if current_status else 'on'}]",
-                text=f"助理應答[{'off' if current_status else 'on'}]"
+    if is_group_or_room:
+        current_status = group_assistant_status
+        quick_reply_items.append(
+            QuickReplyButton(
+                action=MessageAction(
+                    label=f"助理應答[{'off' if current_status else 'on'}]",
+                    text=f"助理應答[{'off' if current_status else 'on'}]"
+                )
             )
         )
-    )
 
-    if has_high_english:
-        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
-    
     prefix = f"@{bot_name} " if is_group_or_room else ""
     
     quick_reply_items.extend([
@@ -177,11 +175,6 @@ async def handle_message(event):
         # QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
         # QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
     ])
-
-    reply_message = TextSendMessage(
-        text=reply_text,
-        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
-    )
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
@@ -237,8 +230,18 @@ async def handle_message(event):
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
     
     try:
+        # 確保回覆訊息不為空
+        if not reply_text.strip():
+            reply_text = "抱歉，無法處理您的請求，請稍後再試。"
+            
         # 立即回覆訊息，避免token過期
-        line_bot_api.reply_message(event.reply_token, reply_message)
+        line_bot_api.reply_message(
+            event.reply_token, 
+            TextSendMessage(
+                text=reply_text,
+                quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
+            )
+        )
         # 成功回覆後再更新對話歷史
         conversation_history[user_id].append({"role": "assistant", "content": reply_text})
     except LineBotApiError as e:
