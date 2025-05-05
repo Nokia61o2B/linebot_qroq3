@@ -1,13 +1,16 @@
 """
-蓉蓉小助理
+蓉蓉小助理（修正版）
+- FastAPI + LINE BOT + OpenAI + GROQ + 各類 GPT 模組
+- 修正 async/await 問題
+- 補強例外處理與初始化
+- 轉換為全 async 流程
 """
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
-from linebot import LineBotApi, WebhookHandler
+from linebot import AsyncLineBotApi, WebhookHandler
 from linebot.models import *
-from linebot.exceptions import LineBotApiError, InvalidSignatureError
-import os, re, asyncio, httpx, uvicorn, requests
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
+import os, re, httpx, asyncio, uvicorn
 from contextlib import asynccontextmanager
 from openai import OpenAI
 from groq import Groq
@@ -25,7 +28,7 @@ app = FastAPI()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        update_line_webhook()
+        await update_line_webhook()  # ✅ 改成 async
     except Exception as e:
         print(f"更新 Webhook URL 失敗: {e}")
     yield
@@ -33,33 +36,33 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 base_url = os.getenv("BASE_URL")
-line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
+line_bot_api = AsyncLineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))  # ✅ 改為 AsyncLineBotApi
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-# 修改全局變數，新增群組共用的助理應答狀態
+
 conversation_history = {}
 MAX_HISTORY_LEN = 10
 assistant_status = {}
-group_assistant_status = False  # 新增群組共用的開關狀態
+group_assistant_status = False
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")
 
-def update_line_webhook():
+async def update_line_webhook():
+    """更新 LINE webhook endpoint"""
     access_token = os.getenv("CHANNEL_ACCESS_TOKEN")
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
     json_data = {"endpoint": f"{base_url}/callback"}
-    try:
-        with httpx.Client() as client:
-            res = client.put("https://api.line.me/v2/bot/channel/webhook/endpoint", headers=headers, json=json_data)
-            res.raise_for_status()
-            print(f"✅ Webhook 更新成功: {res.status_code}")
-    except Exception as e:
-        print(f"❌ Webhook 更新失敗: {e}")
+    async with httpx.AsyncClient() as client:
+        res = await client.put("https://api.line.me/v2/bot/channel/webhook/endpoint",
+                               headers=headers, json=json_data)
+        res.raise_for_status()
+        print(f"✅ Webhook 更新成功: {res.status_code}")
 
 router = APIRouter()
+
 @router.post("/callback")
 async def callback(request: Request):
     body = await request.body()
@@ -78,51 +81,41 @@ app.include_router(router)
 async def handle_message(event):
     global conversation_history, assistant_status, group_assistant_status
     user_id = event.source.user_id
-    msg = event.message.text
+    msg = event.message.text.strip()
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
-    
-    reply_text = "抱歉，目前無法提供回應，請稍後再試。"  # ✅ 預設值，避免未賦值
-    has_high_english = False  # ✅ 函式最開頭初始化，避免 scope error
-    
-    # 初始化 quick_reply_items
+
+    reply_text = "抱歉，目前無法提供回應，請稍後再試。"
     quick_reply_items = []
 
     if is_group_or_room:
-        bot_info = line_bot_api.get_bot_info()
+        bot_info = await line_bot_api.get_bot_info()  # ✅ async
         bot_name = bot_info.display_name
-        
-        # 檢查助理應答開關
-        if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
-            group_assistant_status = msg.strip() == "助理應答[on]"
-            reply_text = f"群組助理應答已{'開啟' if group_assistant_status else '關閉'}"
+
+        if msg in ["助理應答[on]", "助理應答[off]"]:
+            group_assistant_status = msg == "助理應答[on]"
+            reply_text = f"群組助理應答已{'啟用' if group_assistant_status else '停用'}"
         else:
             if not group_assistant_status:
                 if not msg.startswith('@'):
-                    return  # ✅ 因為已經 initialized has_high_english，不會報錯
-                if '@' in msg:
-                    at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
-                    if at_text.lower() not in bot_name.lower():
-                        return
-                    msg = msg.replace(f'@{at_text}', '').strip()
-            else:
-                # 當助理開啟時，不需要@也能回應
-                pass
+                    return
+                at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
+                if at_text.lower() not in bot_name.lower():
+                    return
+                msg = msg.replace(f'@{at_text}', '').strip()
     else:
         bot_name = ""
 
     if is_group_or_room:
-        current_status = group_assistant_status
         quick_reply_items.append(
             QuickReplyButton(
                 action=MessageAction(
-                    label=f"助理應答[{'off' if current_status else 'on'}]",
-                    text=f"助理應答[{'off' if current_status else 'on'}]"
+                    label=f"助理應答[{'off' if group_assistant_status else 'on'}]",
+                    text=f"助理應答[{'off' if group_assistant_status else 'on'}]"
                 )
             )
         )
 
     prefix = f"@{bot_name} " if is_group_or_room else ""
-
     quick_reply_items.extend([
         QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
         QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
@@ -130,19 +123,9 @@ async def handle_message(event):
         QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
         QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
     ])
-    
-    # 添加助理开关按钮
-    if is_group_or_room:
-        quick_reply_items.insert(0, QuickReplyButton(
-            action=MessageAction(
-                label=f"助理應答[{'off' if group_assistant_status else 'on'}]",
-                text=f"助理應答[{'off' if group_assistant_status else 'on'}]"
-            )
-        ))
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
-
     conversation_history[user_id].append({"role": "user", "content": msg + ", 請以繁體中文回答我問題"})
 
     stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
@@ -178,21 +161,19 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            reply_text = asyncio.run(get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:]))
+            reply_text = await get_reply_async(conversation_history[user_id][-MAX_HISTORY_LEN:])
     except Exception as e:
-        reply_text = f"API 發生錯誤: {str(e)}"
+        reply_text = f"API 發生錯誤：{str(e)}"
 
     english_ratio = calculate_english_ratio(reply_text)
-    has_high_english = english_ratio > 0.1
-
-    if has_high_english:
-        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
+    if english_ratio > 0.1:
+        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體中文")))
 
     try:
         if not reply_text.strip():
-            reply_text = "抱歉，無法處理您的請求，請稍後再試。"
-        line_bot_api.reply_message(
-            event.reply_token, 
+            reply_text = "抱歉，無法處理您的要求，請稍後再試。"
+        await line_bot_api.reply_message(  # ✅ async
+            event.reply_token,
             TextSendMessage(
                 text=reply_text,
                 quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
@@ -200,10 +181,9 @@ async def handle_message(event):
         )
         conversation_history[user_id].append({"role": "assistant", "content": reply_text})
     except LineBotApiError as e:
-        print(f"❌ 回覆訊息失敗: {e}")
+        print(f"❌ 回覆訊息失敗：{e}")
         if "Invalid reply token" in str(e):
-            print("Reply token已過期，請確保及時回覆訊息")
-        return
+            print("回覆權杖已過期，請及時回覆")
 
 @handler.add(PostbackEvent)
 async def handle_postback(event):
@@ -230,6 +210,14 @@ async def health_check():
 @app.get("/")
 async def root():
     return {"message": "Service is live."}
+
+async def get_reply_async(messages):
+    """改成 async 版本的 get_reply"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, lambda: client.chat.completions.create(
+        model="gpt-3.5-turbo-1106",
+        messages=messages
+    ).choices[0].message.content)
 
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
