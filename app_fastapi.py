@@ -65,7 +65,7 @@ async def callback(request: Request):
     body = await request.body()
     signature = request.headers.get("X-Line-Signature")
     try:
-        handler.handle(body.decode("utf-8"), signature)
+        await handler.handle(body.decode("utf-8"), signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
