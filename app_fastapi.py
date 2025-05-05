@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from linebot import AsyncLineBotApi, WebhookHandler
 from linebot.models import *
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.aiohttp_async_http_client import AioHttpClient  # ✅ 新增 import
+from linebot.http_client import AsyncHttpClient  # ✅ 修正 import
 import os, re, httpx, asyncio, uvicorn
 from contextlib import asynccontextmanager
 from openai import OpenAI
@@ -42,8 +42,8 @@ app = FastAPI(lifespan=lifespan)
 
 base_url = os.getenv("BASE_URL")
 
-# ✅ 初始化 AsyncLineBotApi + AioHttpClient
-async_http_client = AioHttpClient()  # ✅ 新增必要 client
+# ✅ 初始化 AsyncLineBotApi + AsyncHttpClient
+async_http_client = AsyncHttpClient()  # ✅ 新增必要 client
 line_bot_api = AsyncLineBotApi(channel_access_token=os.getenv('CHANNEL_ACCESS_TOKEN'), async_http_client=async_http_client)
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
@@ -82,7 +82,7 @@ async def callback(request: Request):
         raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return JSONResponse(content={"message": "ok"})
+    return JSONResponse(content={"message": "成功"})
 
 app.include_router(router)
 
@@ -219,7 +219,7 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    return {"message": "Service is live."}
+    return {"message": "服務正在運行中。"}
 
 async def get_reply_async(messages):
     """async 版本 get_reply → 用 run_in_executor 包裝同步 OpenAI client"""
