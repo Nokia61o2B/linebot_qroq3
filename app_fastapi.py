@@ -104,6 +104,9 @@ async def handle_message(event):
                     if at_text.lower() not in bot_name.lower():
                         return
                     msg = msg.replace(f'@{at_text}', '').strip()
+            else:
+                # 當助理開啟時，不需要@也能回應
+                pass
     else:
         bot_name = ""
 
