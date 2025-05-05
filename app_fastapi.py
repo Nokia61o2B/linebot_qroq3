@@ -1,19 +1,23 @@
 """
 蓉蓉小助理（修正版）
-- FastAPI + LINE BOT + OpenAI + GROQ + 各類 GPT 模組
-- 修正 async/await 問題
-- 補強例外處理與初始化
-- 轉換為全 async 流程
+✅ 修復 AsyncLineBotApi 初始化缺少 async_http_client 的問題
+✅ FastAPI + AsyncLineBotApi + WebhookHandler + GPT 模組
+✅ 全程 async 流程
+✅ 繁體中文註解
 """
+
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from linebot import AsyncLineBotApi, WebhookHandler
 from linebot.models import *
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
+from linebot.aiohttp_async_http_client import AioHttpClient  # ✅ 新增 import
 import os, re, httpx, asyncio, uvicorn
 from contextlib import asynccontextmanager
 from openai import OpenAI
 from groq import Groq
+
+# ✅ 你的自訂指令模組
 from my_commands.lottery_gpt import lottery_gpt
 from my_commands.gold_gpt import gold_gpt
 from my_commands.platinum_gpt import platinum_gpt
@@ -25,6 +29,7 @@ from my_commands.stock.stock_gpt import stock_gpt
 
 app = FastAPI()
 
+# ✅ lifespan 啟動時更新 webhook
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -36,7 +41,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 base_url = os.getenv("BASE_URL")
-line_bot_api = AsyncLineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))  # ✅ 改為 AsyncLineBotApi
+
+# ✅ 初始化 AsyncLineBotApi + AioHttpClient
+async_http_client = AioHttpClient()  # ✅ 新增必要 client
+line_bot_api = AsyncLineBotApi(channel_access_token=os.getenv('CHANNEL_ACCESS_TOKEN'), async_http_client=async_http_client)
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
@@ -65,6 +73,7 @@ router = APIRouter()
 
 @router.post("/callback")
 async def callback(request: Request):
+    """接收 LINE webhook 事件"""
     body = await request.body()
     signature = request.headers.get("X-Line-Signature")
     try:
@@ -79,6 +88,7 @@ app.include_router(router)
 
 @handler.add(MessageEvent, message=TextMessage)
 async def handle_message(event):
+    """處理 LINE 訊息事件"""
     global conversation_history, assistant_status, group_assistant_status
     user_id = event.source.user_id
     msg = event.message.text.strip()
@@ -88,7 +98,7 @@ async def handle_message(event):
     quick_reply_items = []
 
     if is_group_or_room:
-        bot_info = await line_bot_api.get_bot_info()  # ✅ async
+        bot_info = await line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
 
         if msg in ["助理應答[on]", "助理應答[off]"]:
@@ -172,7 +182,7 @@ async def handle_message(event):
     try:
         if not reply_text.strip():
             reply_text = "抱歉，無法處理您的要求，請稍後再試。"
-        await line_bot_api.reply_message(  # ✅ async
+        await line_bot_api.reply_message(
             event.reply_token,
             TextSendMessage(
                 text=reply_text,
@@ -212,7 +222,7 @@ async def root():
     return {"message": "Service is live."}
 
 async def get_reply_async(messages):
-    """改成 async 版本的 get_reply"""
+    """async 版本 get_reply → 用 run_in_executor 包裝同步 OpenAI client"""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, lambda: client.chat.completions.create(
         model="gpt-3.5-turbo-1106",
