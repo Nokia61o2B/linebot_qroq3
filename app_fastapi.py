@@ -130,6 +130,15 @@ async def handle_message(event):
         QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
         QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
     ])
+    
+    # 添加助理开关按钮
+    if is_group_or_room:
+        quick_reply_items.insert(0, QuickReplyButton(
+            action=MessageAction(
+                label=f"助理應答[{'off' if group_assistant_status else 'on'}]",
+                text=f"助理應答[{'off' if group_assistant_status else 'on'}]"
+            )
+        ))
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
