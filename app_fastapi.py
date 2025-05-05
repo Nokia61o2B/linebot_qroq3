@@ -75,84 +75,38 @@ async def callback(request: Request):
 app.include_router(router)
 
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message_wrapper(event):
-    asyncio.create_task(handle_message(event))
-
-async def get_reply(messages):
-    select_model = "gpt-4o-mini"
-    try:
-        completion = await client.chat.completions.create(model=select_model, messages=messages, max_tokens=800)
-        return completion.choices[0].message.content
-    except:
-        try:
-            response = groq_client.chat.completions.create(
-                model="llama3-70b-8192", messages=messages, max_tokens=2000, temperature=1.2
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"AI 發生錯誤: {str(e)}"
-
-def show_loading_animation(user_id: str, seconds: int = 5):
-    url = "https://api.line.me/v2/bot/chat/loading/start"
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {os.getenv('CHANNEL_ACCESS_TOKEN')}"
-    }
-    data = {
-        "chatId": user_id,
-        "loadingSeconds": seconds
-    }
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 202:
-            print("✅ 載入動畫觸發成功")
-        else:
-            print(f"❌ 載入動畫錯誤: {response.status_code}, {response.text}")
-    except Exception as e:
-        print(f"❌ 載入動畫請求失敗: {e}")
-
-def calculate_english_ratio(text):
-    if not text:
-        return 0
-    english_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
-    total_chars = sum(1 for c in text if c.isalpha())
-    return english_chars / total_chars if total_chars > 0 else 0
-
 async def handle_message(event):
     global conversation_history, assistant_status, group_assistant_status
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
-    reply_text = ""
-    has_high_english = False  # 初始化變量
     
-    # 初始化 quick_reply_items 列表
+    reply_text = "抱歉，目前無法提供回應，請稍後再試。"  # ✅ 預設值，避免未賦值
+    has_high_english = False  # ✅ 函式最開頭初始化，避免 scope error
+    
+    # 初始化 quick_reply_items
     quick_reply_items = []
 
-    # 處理群組消息
     if is_group_or_room:
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
         
-        # 處理助理應答開關指令
+        # 檢查助理應答開關
         if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
             group_assistant_status = msg.strip() == "助理應答[on]"
             reply_text = f"群組助理應答已{'開啟' if group_assistant_status else '關閉'}"
         else:
-            # 根據助理應答狀態決定是否需要 @ 標記
             if not group_assistant_status:
-                # 關閉狀態：需要 @ 才回應
                 if not msg.startswith('@'):
-                    return
+                    return  # ✅ 因為已經 initialized has_high_english，不會報錯
                 if '@' in msg:
                     at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
                     if at_text.lower() not in bot_name.lower():
                         return
                     msg = msg.replace(f'@{at_text}', '').strip()
     else:
-        bot_name = ""  # 個人聊天不需要 bot 名稱
+        bot_name = ""
 
-    # 設置快速回覆按鈕時根據聊天類型選擇狀態
     if is_group_or_room:
         current_status = group_assistant_status
         quick_reply_items.append(
@@ -165,15 +119,13 @@ async def handle_message(event):
         )
 
     prefix = f"@{bot_name} " if is_group_or_room else ""
-    
+
     quick_reply_items.extend([
         QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
         QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
         QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")),
         QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
         QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
-        # QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
-        # QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD"))
     ])
 
     if user_id not in conversation_history:
@@ -218,23 +170,15 @@ async def handle_message(event):
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
-    if not reply_text:
-        reply_text = "抱歉，目前無法提供回應，請稍後再試。"
-
-    # 計算英文比例並設置 has_high_english
     english_ratio = calculate_english_ratio(reply_text)
     has_high_english = english_ratio > 0.1
 
-    # 根據 has_high_english 添加翻譯按鈕
     if has_high_english:
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
-    
+
     try:
-        # 確保回覆訊息不為空
         if not reply_text.strip():
             reply_text = "抱歉，無法處理您的請求，請稍後再試。"
-            
-        # 立即回覆訊息，避免token過期
         line_bot_api.reply_message(
             event.reply_token, 
             TextSendMessage(
@@ -242,11 +186,9 @@ async def handle_message(event):
                 quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items else None
             )
         )
-        # 成功回覆後再更新對話歷史
         conversation_history[user_id].append({"role": "assistant", "content": reply_text})
     except LineBotApiError as e:
         print(f"❌ 回覆訊息失敗: {e}")
-        # 如果是token過期，記錄錯誤但不更新對話歷史
         if "Invalid reply token" in str(e):
             print("Reply token已過期，請確保及時回覆訊息")
         return
