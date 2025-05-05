@@ -124,6 +124,7 @@ async def handle_message(event):
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
     reply_text = ""
+    has_high_english = False  # 初始化變量
     
     # 初始化 quick_reply_items 列表
     quick_reply_items = []
@@ -148,16 +149,11 @@ async def handle_message(event):
                     if at_text.lower() not in bot_name.lower():
                         return
                     msg = msg.replace(f'@{at_text}', '').strip()
-            # 開啟狀態：不需要 @ 直接回應
     else:
-        # 個人聊天一律回應
-        bot_name = ""
-        if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
-            assistant_status[user_id] = msg.strip() == "助理應答[on]"
-            reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
+        bot_name = ""  # 個人聊天不需要 bot 名稱
 
     # 設置快速回覆按鈕時根據聊天類型選擇狀態
-    current_status = group_assistant_status if is_group_or_room else assistant_status.get(user_id, False)
+    current_status = group_assistant_status if is_group_or_room else False
     quick_reply_items.append(
         QuickReplyButton(
             action=MessageAction(
@@ -232,9 +228,14 @@ async def handle_message(event):
     if not reply_text:
         reply_text = "抱歉，目前無法提供回應，請稍後再試。"
 
+    # 計算英文比例並設置 has_high_english
     english_ratio = calculate_english_ratio(reply_text)
     has_high_english = english_ratio > 0.1
 
+    # 根據 has_high_english 添加翻譯按鈕
+    if has_high_english:
+        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
+    
     try:
         # 立即回覆訊息，避免token過期
         line_bot_api.reply_message(event.reply_token, reply_message)
