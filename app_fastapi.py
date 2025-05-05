@@ -124,22 +124,28 @@ async def handle_message(event):
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
     reply_text = ""
+    
+    # 初始化 quick_reply_items 列表
+    quick_reply_items = []
 
     # 根據是否為群組聊天使用不同的狀態追蹤
     if is_group_or_room:
+        # 獲取 bot 的資訊
+        bot_info = await line_bot_api.get_bot_info()
+        bot_name = bot_info.display_name
+        
         # 處理群組的助理應答開關指令
         if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
             group_assistant_status = msg.strip() == "助理應答[on]"
             reply_text = f"群組助理應答已{'開啟' if group_assistant_status else '關閉'}"
     else:
+        bot_name = ""  # 個人聊天不需要 bot 名稱
         # 個人聊天使用個人狀態
         if user_id not in assistant_status:
             assistant_status[user_id] = False
         if msg.strip() in ["助理應答[on]", "助理應答[off]"]:
             assistant_status[user_id] = msg.strip() == "助理應答[on]"
             reply_text = f"助理應答已{'開啟' if assistant_status[user_id] else '關閉'}"
-
-    # ... existing code ...
 
     # 設置快速回覆按鈕時根據聊天類型選擇狀態
     current_status = group_assistant_status if is_group_or_room else assistant_status.get(user_id, False)
