@@ -126,6 +126,107 @@ def calculate_english_ratio(text):
     return english_chars / total_chars if total_chars > 0 else 0
 
 async def handle_message(event):
+    """處理來自 LINE 的訊息（僅群組/聊天室有 auto_reply on/off）"""
+    user_id = event.source.user_id
+    msg = event.message.text
+    is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
+
+    # ✅ 取得 chat_id（群組ID / 聊天室ID / 個人ID）
+    if isinstance(event.source, SourceGroup):
+        chat_id = event.source.group_id
+    elif isinstance(event.source, SourceRoom):
+        chat_id = event.source.room_id
+    else:
+        chat_id = user_id  # 個人
+
+    # ✅ 初始化 auto_reply_status（只針對群組/聊天室）
+    if is_group_or_room and chat_id not in auto_reply_status:
+        auto_reply_status[chat_id] = True  # 預設開啟
+
+    # ✅ 處理群組/聊天室的 on/off 指令
+    if is_group_or_room:
+        bot_info = line_bot_api.get_bot_info()
+        bot_name = bot_info.display_name
+
+        if msg.strip().lower() == '開啟自動回答':
+            line_bot_api.push_message(chat_id, TextSendMessage('✅ 已開啟自動回答'))
+            auto_reply_status[chat_id] = True
+            return
+        elif msg.strip().lower() == '關閉自動回答':
+            line_bot_api.push_message(chat_id, TextSendMessage('✅ 已關閉自動回答'))
+            auto_reply_status[chat_id] = False
+            return
+        
+        # ✅ 若 auto_reply_status 為 False 且沒 @bot → 不處理
+        if not auto_reply_status[chat_id] and f"@{bot_name}" not in msg:
+            return
+
+    # ✅ 個人私訊永遠 auto_reply，不檢查 flag
+    if not is_group_or_room:
+        show_loading_animation(user_id)
+
+    # ✅ 紀錄對話歷史（用 user_id 當 key，不管 chat_id）
+    if user_id not in conversation_history:
+        conversation_history[user_id] = []
+    conversation_history[user_id].append({"role": "user", "content": msg + ", 請以繁體中文回答我問題"})
+
+    if len(conversation_history[user_id]) > MAX_HISTORY_LEN * 2:
+        conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY_LEN * 2:]
+
+    # ✅ 其他處理邏輯維持不變...
+    reply_text = ""
+    try:
+        stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
+        stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
+
+        # ✅ 你的 if else 判斷區都不動...
+
+        else:
+            # ✅ 群組/聊天室：檢查 flag 才回答
+            # ✅ 個人：永遠 auto_reply
+            if not is_group_or_room or auto_reply_status.get(chat_id, True):
+                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            else:
+                return
+    except Exception as e:
+        reply_text = f"API 發生錯誤: {str(e)}"
+
+    if not reply_text:
+        reply_text = "抱歉，目前無法提供回應，請稍後再試。"
+
+    # ✅ 建立 quick reply
+    english_ratio = calculate_english_ratio(reply_text)
+    has_high_english = english_ratio > 0.1
+
+    quick_reply_items = []
+    if has_high_english:
+        quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
+
+    prefix = f"@{bot_name} " if is_group_or_room else ""
+    quick_reply_items.extend([
+        QuickReplyButton(action=MessageAction(label="開啟自動回答", text="開啟自動回答")),
+        QuickReplyButton(action=MessageAction(label="關閉自動回答", text="關閉自動回答")),
+        QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
+        QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
+        QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")),
+        QuickReplyButton(action=MessageAction(label="威力彩", text=f"{prefix}威力彩")),
+        QuickReplyButton(action=MessageAction(label="金價", text=f"{prefix}金價")),
+        QuickReplyButton(action=MessageAction(label="日元", text=f"{prefix}JPY")),
+        QuickReplyButton(action=MessageAction(label="美元", text=f"{prefix}USD")),
+    ])
+
+    can_use_quick_reply = not isinstance(event.source, SourceRoom)
+
+    reply_message = TextSendMessage(
+        text=reply_text,
+        quick_reply=QuickReply(items=quick_reply_items) if quick_reply_items and can_use_quick_reply else None
+    )
+
+    try:
+        line_bot_api.push_message(chat_id, reply_message)
+        conversation_history[user_id].append({"role": "assistant", "content": reply_text})
+    except LineBotApiError as e:
+        print(f"❌ 發送訊息失敗: {e}")
     """處理來自 LINE 的訊息（自動判斷目標 ID + user/group 顯示 quick reply）"""
     user_id = event.source.user_id
     msg = event.message.text
@@ -202,10 +303,10 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            # if auto_reply_status[target_id]:
-            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
-            # else:
-                # return
+            if auto_reply_status[target_id]:
+                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            else:
+                return
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
