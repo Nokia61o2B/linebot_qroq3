@@ -202,10 +202,10 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            if auto_reply_status[target_id]:
-                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
-            else:
-                return
+            # if auto_reply_status[target_id]:
+            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            # else:
+                # return
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
@@ -271,9 +271,10 @@ async def handle_message(event):
             line_bot_api.push_message(chat_id, TextSendMessage('已關閉自動回答功能'))
             auto_reply_status[chat_id] = False
             return
-
-        # if not auto_reply_status[chat_id] and '@' not in msg:
-        #     return
+        
+        if not auto_reply_status[chat_id]:
+            if '@' not in msg:
+                return
 
     else:
         show_loading_animation(user_id)
