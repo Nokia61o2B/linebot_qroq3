@@ -262,8 +262,6 @@ async def handle_message(event):
     if is_group_or_room:
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
-        if not auto_reply_status[chat_id] and '@' not in msg:
-            return
 
         if msg.strip().lower() == '開啟自動回答':
             line_bot_api.push_message(chat_id, TextSendMessage('已開啟自動回答功能'))
@@ -273,6 +271,10 @@ async def handle_message(event):
             line_bot_api.push_message(chat_id, TextSendMessage('已關閉自動回答功能'))
             auto_reply_status[chat_id] = False
             return
+
+        if not auto_reply_status[chat_id] and '@' not in msg:
+            return
+
     else:
         show_loading_animation(user_id)
 
