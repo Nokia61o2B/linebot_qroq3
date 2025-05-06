@@ -39,6 +39,9 @@ groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 conversation_history = {}
 MAX_HISTORY_LEN = 10
 
+# 控制助理自動回答的全域變數
+auto_reply_enabled = True
+
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")
 
 def update_line_webhook():
@@ -116,25 +119,36 @@ def calculate_english_ratio(text):
     return english_chars / total_chars if total_chars > 0 else 0
 
 async def handle_message(event):
-    global conversation_history
+    global conversation_history, auto_reply_enabled
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
     reply_text = ""
 
-    # 處理群組消息
+    # 根據auto_reply_enabled判斷是否需要@助理名稱
+    # 當auto_reply_enabled為True時，不需@助理名稱；為False時則需要@助理名稱
     if is_group_or_room:
-        if not msg.startswith('@'):
-            return
         bot_info = line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
-        if '@' in msg:
-            at_text = msg.split('@')[1].split()[0] if len(msg.split('@')) > 1 else ''
-            if at_text.lower() not in bot_name.lower():
-                return
-            msg = msg.replace(f'@{at_text}', '').strip()
-            if not msg:
-                return
+        if not auto_reply_enabled and '@' not in msg:
+            return
+
+    # 處理群組消息
+    if is_group_or_room:
+        bot_info = line_bot_api.get_bot_info()
+        bot_name = bot_info.display_name
+
+        # 處理開關自動回答的指令
+        if msg.strip().lower() == '開啟自動回答':
+            auto_reply_enabled = True
+            reply_text = '已開啟自動回答功能'
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+            return
+        elif msg.strip().lower() == '關閉自動回答':
+            auto_reply_enabled = False
+            reply_text = '已關閉自動回答功能'
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(reply_text))
+            return
     else:
         # 在個人聊天時顯示載入動畫
         show_loading_animation(user_id)
@@ -180,7 +194,13 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            # 檢查是否啟用自動回覆功能
+            if auto_reply_enabled:
+                # 如果啟用，則使用最近的對話歷史獲取AI回覆
+                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            else:
+                # 如果未啟用自動回覆，則直接返回不做處理
+                return
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
@@ -198,6 +218,22 @@ async def handle_message(event):
     prefix = f"@{bot_name} " if is_group_or_room else ""
     
     quick_reply_items.extend([
+        {
+            "type": "action",
+            "action": {
+                "type": "message",
+                "label": "開啟自動回答",
+                "text": "開啟自動回答"
+            }
+        },
+        {
+            "type": "action",
+            "action": {
+                "type": "message",
+                "label": "關閉自動回答",
+                "text": "關閉自動回答"
+            }
+        },
         QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
         QuickReplyButton(action=MessageAction(label="美股大盤", text=f"{prefix}美股")),
         QuickReplyButton(action=MessageAction(label="大樂透", text=f"{prefix}大樂透")),
@@ -250,7 +286,10 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            if auto_reply_enabled:
+                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
+            else:
+                return
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
