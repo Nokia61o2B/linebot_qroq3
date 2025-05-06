@@ -272,8 +272,8 @@ async def handle_message(event):
             auto_reply_status[chat_id] = False
             return
 
-        if not auto_reply_status[chat_id] and '@' not in msg:
-            return
+        # if not auto_reply_status[chat_id] and '@' not in msg:
+        #     return
 
     else:
         show_loading_animation(user_id)
