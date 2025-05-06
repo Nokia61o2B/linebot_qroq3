@@ -1,3 +1,4 @@
+
 # 蓉蓉小助理
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -123,8 +124,9 @@ def calculate_english_ratio(text):
     english_chars = sum(1 for c in text if c.isalpha() and ord(c) < 128)
     total_chars = sum(1 for c in text if c.isalpha())
     return english_chars / total_chars if total_chars > 0 else 0
-    async def handle_message(event):
-    """處理來自 LINE 的訊息（用 push_message，不用 reply_token）"""
+
+async def handle_message(event):
+    """ 處理來自 LINE 的訊息（用 push_message，不用 reply_token） """
     user_id = event.source.user_id
     msg = event.message.text
     is_group_or_room = isinstance(event.source, (SourceGroup, SourceRoom))
