@@ -1,7 +1,6 @@
 """
 蓉蓉小助理（最終修正版）
-✅ 修復 AsyncLineBotApi 初始化缺少 async_http_client 的問題
-✅ 補上 calculate_english_ratio
+✅ 修正 AsyncLineBotApi 初始化：正確使用 AioHttpClient
 ✅ FastAPI + AsyncLineBotApi + WebhookHandler + GPT 模組
 ✅ 全程 async 流程
 ✅ 繁體中文詳細註解
@@ -17,11 +16,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 
+# LINE Bot SDK
 from linebot import AsyncLineBotApi, WebhookHandler
 from linebot.models import *
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
-from linebot.http_client import AsyncHttpClient  # 正確的 Async HTTP client
+from linebot.aiohttp_async_http_client import AioHttpClient   # 正確的 Async HTTP client
 
+# OpenAI / GROQ
 from openai import OpenAI
 from groq import Groq
 
@@ -35,7 +36,7 @@ from my_commands.partjob_gpt import partjob_gpt
 from my_commands.crypto_coin_gpt import crypto_gpt
 from my_commands.stock.stock_gpt import stock_gpt
 
-# FastAPI app & lifespan
+# FastAPI app & lifespan 生命週期鉤子
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -49,7 +50,7 @@ router = APIRouter()
 
 # 環境變數 & 全域狀態
 base_url = os.getenv("BASE_URL")
-async_http_client = AsyncHttpClient()
+async_http_client = AioHttpClient()
 line_bot_api = AsyncLineBotApi(
     channel_access_token=os.getenv("CHANNEL_ACCESS_TOKEN"),
     async_http_client=async_http_client
@@ -79,7 +80,7 @@ async def update_line_webhook():
         res.raise_for_status()
         print(f"✅ Webhook 更新成功: {res.status_code}")
 
-# 換成 async router
+# LINE Webhook 接口
 @router.post("/callback")
 async def callback(request: Request):
     body = await request.body()
@@ -94,7 +95,7 @@ async def callback(request: Request):
 
 app.include_router(router)
 
-# 計算回覆中英文比例，用於決定是否加「翻譯成中文」按鈕
+# 計算回覆中英文比例
 def calculate_english_ratio(text: str) -> float:
     eng_chars = re.findall(r'[A-Za-z]', text)
     total = len(text)
@@ -112,7 +113,7 @@ async def handle_message(event):
     reply_text = "抱歉，目前無法提供回應，請稍後再試。"
     quick_reply_items = []
 
-    # 群組助理開關機制
+    # 群組助理開關邏輯
     if is_group_or_room:
         bot_info = await line_bot_api.get_bot_info()
         bot_name = bot_info.display_name
@@ -124,13 +125,12 @@ async def handle_message(event):
             if not group_assistant_status:
                 if not msg.startswith('@'):
                     return
-                # 檢查 @ 是否為 @bot
                 at_text = msg.split('@')[1].split()[0] if '@' in msg else ''
                 if at_text.lower() not in bot_name.lower():
                     return
                 msg = msg.replace(f'@{at_text}', '').strip()
 
-        # 加入助理開關按鈕
+        # 助理開關按鈕
         quick_reply_items.append(
             QuickReplyButton(
                 action=MessageAction(
@@ -142,7 +142,7 @@ async def handle_message(event):
     else:
         bot_name = ""
 
-    # 常用快速按鈕
+    # 常用功能快速按鈕
     prefix = f"@{bot_name} " if is_group_or_room else ""
     for label, text in [
         ("台股大盤", f"{prefix}大盤"),
@@ -155,17 +155,16 @@ async def handle_message(event):
             QuickReplyButton(action=MessageAction(label=label, text=text))
         )
 
-    # 初始化對話歷史
+    # 初始化與截斷對話歷史
     conversation_history.setdefault(user_id, [])
     conversation_history[user_id].append({
         "role": "user",
         "content": msg + "，請以繁體中文回答我問題"
     })
-    # 限制歷史長度
     if len(conversation_history[user_id]) > MAX_HISTORY_LEN * 2:
         conversation_history[user_id] = conversation_history[user_id][-MAX_HISTORY_LEN * 2:]
 
-    # 判斷各種指令
+    # 指令判別與回覆
     try:
         if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
             reply_text = lottery_gpt(msg)
@@ -193,12 +192,11 @@ async def handle_message(event):
         elif msg.startswith("104:"):
             reply_text = one04_gpt(msg[4:])
         else:
-            # 非專屬指令，呼叫 ChatGPT/GROQ
             reply_text = await get_reply_async(conversation_history[user_id][-MAX_HISTORY_LEN:])
     except Exception as e:
         reply_text = f"API 發生錯誤：{str(e)}"
 
-    # 若英文比例 >10%，加「翻譯成中文」按鈕
+    # 若英文比例過高，加入「翻譯成中文」按鈕
     if calculate_english_ratio(reply_text) > 0.1:
         quick_reply_items.append(
             QuickReplyButton(
@@ -209,7 +207,7 @@ async def handle_message(event):
             )
         )
 
-    # 回覆並存歷史
+    # 回覆並記錄
     try:
         if not reply_text.strip():
             reply_text = "抱歉，無法處理您的要求，請稍後再試。"
@@ -229,10 +227,12 @@ async def handle_message(event):
         if "Invalid reply token" in str(e):
             print("回覆權杖已過期，請及時回覆")
 
+# 處理 PostbackEvent
 @handler.add(PostbackEvent)
 async def handle_postback(event):
     print(event.postback.data)
 
+# 歡迎新成員
 @handler.add(MemberJoinedEvent)
 async def welcome(event):
     uid = event.joined.members[0].user_id
@@ -247,6 +247,7 @@ async def welcome(event):
         TextSendMessage(text=f'{profile.display_name} 歡迎加入')
     )
 
+# 健康檢查與根目錄
 @app.get("/healthz")
 async def health_check():
     return {"status": "ok"}
@@ -255,7 +256,7 @@ async def health_check():
 async def root():
     return {"message": "服務正在運行中。"}
 
-# 包裝同步 OpenAI 呼叫為 async
+# 封裝 OpenAI 同步呼叫為 async
 async def get_reply_async(messages):
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(
@@ -267,5 +268,5 @@ async def get_reply_async(messages):
     )
 
 if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
+    port = int(os.environ.get("PORT", 5000))
     uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
