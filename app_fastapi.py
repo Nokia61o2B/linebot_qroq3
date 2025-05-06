@@ -482,6 +482,6 @@ async def health_check():
 async def root():
     return {"message": "Service is live."}
 
-if __name__ == "__main__":
-    port = int(os.environ.get('PORT', 5000))
-    uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
+# if __name__ == "__main__":
+#     port = int(os.environ.get('PORT', 5000))
+#     uvicorn.run("app_fastapi:app", host="0.0.0.0", port=port, reload=True)
