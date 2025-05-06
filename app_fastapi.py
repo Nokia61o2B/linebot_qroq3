@@ -178,16 +178,12 @@ async def handle_message(event):
     try:
         stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
         stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
-
-        # ✅ 你的 if else 判斷區都不動...
-
+        # ✅ 群組/聊天室：檢查 flag 才回答
+        # ✅ 個人：永遠 auto_reply
+        if not is_group_or_room or auto_reply_status.get(chat_id, True):
+            reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
         else:
-            # ✅ 群組/聊天室：檢查 flag 才回答
-            # ✅ 個人：永遠 auto_reply
-            if not is_group_or_room or auto_reply_status.get(chat_id, True):
-                reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
-            else:
-                return
+            return
     except Exception as e:
         reply_text = f"API 發生錯誤: {str(e)}"
 
