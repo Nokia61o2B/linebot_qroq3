@@ -1,10 +1,9 @@
+# 使用其他方式抓取匯率數據
 import os
 import openai
 from groq import Groq
-from datetime import datetime
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
+import yfinance as yf  # 需要先 pip install yfinance
 
 # 設定 API 金鑰
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -30,72 +29,51 @@ def get_reply(messages):
             reply = f"OpenAI API 發生錯誤: {openai_err.error.message}，GROQ API 發生錯誤: {groq_err.message}"
     return reply
 
-def fetch_jpy_rates(kind):
-    # 目標網址
-    url = f"https://rate.bot.com.tw/xrt/quote/day/{kind}"
+# 用 yfinance 抓匯率數據的函式
+def fetch_currency_rates(kind):
+    """
+    kind 參數請用 Yahoo Finance 代號，例如：
+    'USDTWD=X' → 美元對台幣
+    'TWDUSD=X' → 台幣對美元
+    """
+    ticker = yf.Ticker(kind)
+    hist = ticker.history(period="30d")  # 取最近30天資料
 
-    # 發送HTTP請求
-    response = requests.get(url)
+    if hist.empty:
+        raise ValueError(f"找不到代號 {kind} 的資料，請確認 Yahoo Finance 代碼是否正確。")
 
-    # 確定HTTP請求成功
-    if response.status_code == 200:
-        # 解析HTML
-        soup = BeautifulSoup(response.text, 'html.parser')
+    # 重整 DataFrame
+    df = hist[['Close']].reset_index()
+    df.rename(columns={'Date': '日期', 'Close': '收盤價'}, inplace=True)
+    df['日期'] = df['日期'].dt.strftime('%Y-%m-%d')
 
-        # 在網頁中找到表格並提取即期匯率和本行賣出價格
-        rows = soup.select("table.table-striped tbody tr")
+    print(df)  # 調試輸出
+    return df
 
-        time_rates = []  # Initialize time_rates list
-        spot_rates = []
-        selling_rates = []
-
-        for row in rows:
-            columns = row.find_all('td')
-            # 目前網頁結構下，即期匯率位於第3列，本行賣出價格位於第4列
-            time_rate = columns[0].text
-            spot_rate = columns[2].text
-            selling_rate = columns[3].text
-
-            print(f"日期:{time_rate} 即期匯率: {spot_rate}, 本行賣出價格: {selling_rate}")
-            # 将即期匯率和本行賣出價格添加到列表中
-            time_rates.append(time_rate)
-            spot_rates.append(spot_rate)
-            selling_rates.append(selling_rate)
-
-        # 创建 Pandas DataFrame
-        df = pd.DataFrame({
-            '日期': time_rates,  # Renamed to match the data
-            '即期匯率': spot_rates,
-            '本行賣出價格': selling_rates
-        })
-
-        return df
-
+# 建立分析報告內容
 def generate_content_msg(kind):
-    # 获取和处理数据
-    money_prices_df = fetch_jpy_rates(kind)
+    money_prices_df = fetch_currency_rates(kind)
 
-    # 从数据中获取需要的最高价和最低价信息
-    max_price = money_prices_df['本行賣出價格'].max()  # 最高本行賣出價格
-    min_price = money_prices_df['本行賣出價格'].min()  # 最低本行賣出價格
-    last_date = money_prices_df['日期'].iloc[-1]  # 假设最后一行是最新日期数据
+    max_price = money_prices_df['收盤價'].max()
+    min_price = money_prices_df['收盤價'].min()
+    last_date = money_prices_df['日期'].iloc[-1]
 
-    # 构造专业分析报告的内容
-    content_msg = f'你現在是一位專業的{kind}幣種分析師, 使用以下数据来撰写分析报告:\n'
-    content_msg += f'{money_prices_df} 顯示最近的30筆,\n'
-    content_msg += f'最新日期: {last_date}, 最高價: {max_price} {{日期}}-{{時間}}, 最低價: {min_price}{{日期}}-{{時間}}。\n'
-    content_msg += '請給出完整的趨勢分析報告，顯示每日匯率{日期-時間}{匯率}(幣種/台幣)，'
+    content_msg = f'你現在是一位專業的{kind}幣種分析師, 使用以下數據來撰寫分析報告:\n'
+    content_msg += f'{money_prices_df.to_string(index=False)} 顯示最近30天資料,\n'
+    content_msg += f'最新日期: {last_date}, 最高價: {max_price}, 最低價: {min_price}。\n'
+    content_msg += '請給出完整的趨勢分析報告，顯示每日匯率 {日期} - {收盤價}(幣種/台幣)，'
     content_msg += '使用繁體中文。'
 
     return content_msg
 
+# 主函式
 def money_gpt(kind):
     content_msg = generate_content_msg(kind)
-    print(content_msg)  # 调试输出
+    print(content_msg)  # 調試輸出
 
     msg = [{
         "role": "system",
-        "content": f"你現在是一位專業的{kind}幣種分析師, 使用以下数据来撰写分析报告。"
+        "content": f"你現在是一位專業的{kind}幣種分析師, 使用以下數據來撰寫分析報告。"
     }, {
         "role": "user",
         "content": content_msg
