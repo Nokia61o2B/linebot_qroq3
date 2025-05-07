@@ -152,10 +152,6 @@ async def handle_message_async(event):
     try:
         if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
             reply_text = lottery_gpt(msg)
-        elif stock_code:
-            reply_text = stock_gpt(stock_code.group())
-        elif stock_symbol:
-            reply_text = stock_gpt(stock_symbol.group())
         elif msg.lower().startswith(("大盤", "台股")):
             reply_text = stock_gpt("大盤")
         elif msg.lower().startswith(("美盤", "美股")):
@@ -173,6 +169,10 @@ async def handle_message_async(event):
         elif msg.startswith(("cb:", "$:")):
             coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
             reply_text = crypto_gpt(coin_id)
+        elif stock_code:
+            reply_text = stock_gpt(stock_code.group())
+        elif stock_symbol:
+            reply_text = stock_gpt(stock_symbol.group())
         else:
             reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:])
     except Exception as e:
