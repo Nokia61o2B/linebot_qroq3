@@ -137,6 +137,10 @@ async def handle_message_async(event):
             auto_reply_status[chat_id] = True
             await reply_simple(reply_token, "✅ 已開啟自動回答")
             return
+            
+    # 解析股票/代幣
+    stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
+    stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
@@ -148,6 +152,10 @@ async def handle_message_async(event):
     try:
         if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
             reply_text = lottery_gpt(msg)
+        elif stock_code:
+            reply_text = stock_gpt(stock_code.group())
+        elif stock_symbol:
+            reply_text = stock_gpt(stock_symbol.group())
         elif msg.lower().startswith(("大盤", "台股")):
             reply_text = stock_gpt("大盤")
         elif msg.lower().startswith(("美盤", "美股")):
