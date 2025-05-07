@@ -123,8 +123,20 @@ async def handle_message_async(event):
         await reply_simple(reply_token, "✅ 已關閉自動回答")
         return
 
-    if not auto_reply_status[chat_id] and f"@{bot_name}" not in msg:
-        return
+    if not auto_reply_status[chat_id]:
+        # 非自動回答模式下，檢查訊息是否包含機器人名稱
+        if not any(name in msg.lower() for name in bot_name.lower().split()):
+            return
+            
+        # 分離出@botname後的實際訊息內容
+        msg_parts = msg.split(None, 1)
+        if len(msg_parts) > 1:
+            msg = msg_parts[1]
+        else:
+            # 如果只有@botname沒有其他訊息，開啟自動回答模式
+            auto_reply_status[chat_id] = True
+            await reply_simple(reply_token, "✅ 已開啟自動回答")
+            return
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
