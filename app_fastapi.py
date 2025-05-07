@@ -162,10 +162,10 @@ async def handle_message_async(event):
             reply_text = gold_gpt()
         elif any(msg.lower().startswith(k) for k in ["鉑", "platinum"]):
             reply_text = platinum_gpt()
-        elif any(msg.lower().startswith(k) for k in ["日幣", "jpy"]):
-            reply_text = money_gpt("JPY")
-        elif any(msg.lower().startswith(k) for k in ["美金", "usd"]):
-            reply_text = money_gpt("USD")
+        elif any(msg.upper().startswith(k) for k in ["日幣", "JPY"]):
+            reply_text = money_gpt(f"{msg}TWD=X")
+        elif any(msg.upper().startswith(k) for k in ["美金", "USD"]):
+            reply_text = money_gpt(f"{msg}TWD=X")
         elif msg.startswith(("cb:", "$:")):
             coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
             reply_text = crypto_gpt(coin_id)
