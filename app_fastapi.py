@@ -139,8 +139,8 @@ async def handle_message_async(event):
             return
             
     # 解析股票/代幣
-    stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b', msg)
-    stock_symbol = re.search(r'^[A-Za-z]{1,5}\b', msg)
+    stock_code = re.search(r'^\d{4,6}[A-Za-z]?\b$', msg)  # 嚴格比對整個字串是否為股票代碼
+    stock_symbol = re.search(r'^[A-Za-z]{1,5}\b$', msg)  # 嚴格比對整個字串是否為股票代號
 
     if user_id not in conversation_history:
         conversation_history[user_id] = []
