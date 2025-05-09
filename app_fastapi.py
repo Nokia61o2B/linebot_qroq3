@@ -152,9 +152,9 @@ async def handle_message_async(event):
     try:
         if any(k in msg for k in ["威力彩", "大樂透", "539", "雙贏彩"]):
             reply_text = lottery_gpt(msg)
-        elif msg.lower().startswith(("大盤", "台股")):
+        elif msg.lower().endswith(("大盤", "台股")):
             reply_text = stock_gpt("大盤")
-        elif msg.lower().startswith(("美盤", "美股")):
+        elif msg.lower().endswith(("美盤", "美股")):
             reply_text = stock_gpt("美盤")
         elif msg.startswith("pt:"):
             reply_text = partjob_gpt(msg[3:])
