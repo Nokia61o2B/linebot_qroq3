@@ -109,7 +109,7 @@ async def handle_message_async(event):
     )
 
     if chat_id not in auto_reply_status:
-        auto_reply_status[chat_id] = True
+        auto_reply_status[chat_id] = False  # 將預設值改為 False
 
     bot_info = line_bot_api.get_bot_info()
     bot_name = bot_info.display_name
