@@ -158,13 +158,13 @@ async def handle_message_async(event):
             reply_text = stock_gpt("美盤")
         elif msg.startswith("pt:"):
             reply_text = partjob_gpt(msg[3:])
-        elif any(msg.lower().startswith(k) for k in ["金價", "黃金", "gold"]):
+        elif any(msg.lower().endswith(k) for k in ["金價", "黃金", "gold"]):
             reply_text = gold_gpt()
-        elif any(msg.lower().startswith(k) for k in ["鉑", "platinum"]):
+        elif any(msg.lower().endswith(k) for k in ["鉑", "platinum"]):
             reply_text = platinum_gpt()
-        elif any(msg.upper().startswith(k) for k in ["日幣", "JPY"]):
+        elif any(msg.upper().endswith(k) for k in ["日幣", "JPY"]):
             reply_text = money_gpt(f"{msg}TWD=X")
-        elif any(msg.upper().startswith(k) for k in ["美金", "USD"]):
+        elif any(msg.upper().endswith(k) for k in ["美金", "USD"]):
             reply_text = money_gpt(f"{msg}TWD=X")
         elif msg.startswith(("cb:", "$:")):
             coin_id = msg[3:].strip() if msg.startswith("cb:") else msg[2:].strip()
