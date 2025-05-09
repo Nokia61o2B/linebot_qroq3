@@ -109,7 +109,8 @@ async def handle_message_async(event):
     )
 
     if chat_id not in auto_reply_status:
-        auto_reply_status[chat_id] = False  # 將預設值改為 False
+        # 單人聊天預設開啟，群組聊天預設關閉
+        auto_reply_status[chat_id] = not is_group_or_room
 
     bot_info = line_bot_api.get_bot_info()
     bot_name = bot_info.display_name
