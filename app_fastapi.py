@@ -1,6 +1,6 @@
 # app_fastapi.py
 # 蓉蓉小助理：全程使用 reply_message，不佔用 push_message 額度
-
+#github: git@nokia6102b.github.com:Nokia61o2B/linebot_qroq3.git
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
 from linebot import LineBotApi, WebhookHandler
@@ -189,6 +189,7 @@ async def handle_message_async(event):
         quick_reply_items.append(QuickReplyButton(action=MessageAction(label="翻譯成中文", text="請將上述內容翻譯成繁體正體中文")))
     prefix = f"@{bot_name} " if is_group_or_room else ""
     quick_reply_items.extend([
+          QuickReplyButton(action=MessageAction(label="蓉蓉", text="@蓉蓉")),
         QuickReplyButton(action=MessageAction(label="開啟自動回答", text="開啟自動回答")),
         QuickReplyButton(action=MessageAction(label="關閉自動回答", text="關閉自動回答")),
         QuickReplyButton(action=MessageAction(label="台股大盤", text=f"{prefix}大盤")),
