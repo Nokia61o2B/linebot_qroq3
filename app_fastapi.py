@@ -43,14 +43,13 @@ base_url = os.getenv("BASE_URL")
 line_bot_api = LineBotApi(os.getenv('CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.getenv('CHANNEL_SECRET'))
 
-# -- 新增：Groq 現行模型改為環境變數可控；提供主/備兩組（官方建議型號）
-GROQ_MODEL_PRIMARY  = os.getenv("GROQ_MODEL_PRIMARY",  "llama-3.3-70b-versatile")  # -- 修改：取代舊的 llama3-70b-8192
-GROQ_MODEL_FALLBACK = os.getenv("GROQ_MODEL_FALLBACK", "llama-3.1-8b-instant")     # -- 新增：8B 輕量備援
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))  # 參考：https://console.groq.com/docs/api-reference
+# 更新 Groq 模型使用最新可用的型号
+GROQ_MODEL_PRIMARY = os.getenv("GROQ_MODEL_PRIMARY", "llama-3.3-70b-versatile")  # 主要模型
+GROQ_MODEL_FALLBACK = os.getenv("GROQ_MODEL_FALLBACK", "llama-3.1-8b-instant")   # 备用模型
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # OpenAI（你目前走自定 base_url）
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")  # 請確認供應商
-# 參考（OpenAI Chat Completions）：https://platform.openai.com/docs/api-reference/chat
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"), base_url="https://free.v36.cm/v1")
 
 conversation_history = {}
 MAX_HISTORY_LEN = 10
@@ -71,8 +70,6 @@ def update_line_webhook():
             print(f"✅ Webhook 更新成功: {res.status_code}")
     except Exception as e:
         print(f"❌ Webhook 更新失敗: {e}")
-# 參考：LINE Messaging API Webhook 設定
-# https://developers.line.biz/en/docs/messaging-api/using-webhooks/
 
 router = APIRouter()
 
@@ -94,37 +91,43 @@ app.include_router(router)
 # ============================================
 # Groq 呼叫工具（主→備 自動切換）
 # ============================================
-# -- 新增：集中 Groq 呼叫，避免散落各處出現退役型號
-def _groq_chat(messages, max_tokens=800, temperature=0.7):
+def groq_chat_completion(messages, max_tokens=800, temperature=0.7):
+    """统一的 Groq 聊天完成函数，支持主备模型切换"""
     try:
-        resp = groq_client.chat.completions.create(
-            model=GROQ_MODEL_PRIMARY, messages=messages, max_tokens=max_tokens, temperature=temperature
+        # 首先尝试主要模型
+        completion = groq_client.chat.completions.create(
+            model=GROQ_MODEL_PRIMARY,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature
         )
-        return resp.choices[0].message.content
+        return completion.choices[0].message.content
     except Exception as e_primary:
+        print(f"主要模型 {GROQ_MODEL_PRIMARY} 失敗: {e_primary}")
         try:
-            resp = groq_client.chat.completions.create(
-                model=GROQ_MODEL_FALLBACK, messages=messages, max_tokens=max_tokens, temperature=temperature
+            # 主要模型失败时尝试备用模型
+            completion = groq_client.chat.completions.create(
+                model=GROQ_MODEL_FALLBACK,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature
             )
-            return resp.choices[0].message.content
+            return completion.choices[0].message.content
         except Exception as e_fallback:
-            return (f"Groq 發生錯誤：primary={GROQ_MODEL_PRIMARY} err={e_primary} | "
-                    f"fallback={GROQ_MODEL_FALLBACK} err={e_fallback}")
-# 參考：Groq Models / API
-# https://console.groq.com/docs/models
-# https://console.groq.com/docs/api-reference
+            print(f"备用模型 {GROQ_MODEL_FALLBACK} 也失敗: {e_fallback}")
+            return f"抱歉，AI 服務暫時不可用。錯誤信息: {str(e_fallback)}"
 
 # ============================================
-# 情緒分析（先 OpenAI → 後 Groq 現行模型）
+# 情緒分析
 # ============================================
-# -- 新增：LLM 版情緒分析，回傳四標籤之一
 async def analyze_sentiment(text: str) -> str:
     """
-    呼叫 OpenAI/Groq 判斷訊息情緒
+    判斷訊息情緒
     回傳: positive / neutral / negative / angry
     """
     try:
-        resp = await client.chat.completions.create(
+        # 首先尝试 OpenAI
+        completion = await client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "你是一個情感分析助手，輸出文字情緒標籤"},
@@ -133,20 +136,16 @@ async def analyze_sentiment(text: str) -> str:
             max_tokens=10,
             temperature=0
         )
-        return resp.choices[0].message.content.strip().lower()
-    except Exception:
-        # -- 修改：Groq 使用現行模型（避免退役錯誤）
-        resp = groq_client.chat.completions.create(
-            model=GROQ_MODEL_FALLBACK,  # 輕量模型延遲低；要更準可改 PRIMARY
-            messages=[
-                {"role": "system", "content": "你是一個情感分析助手，輸出文字情緒標籤"},
-                {"role": "user", "content": f"判斷這句話的情緒：{text}\n只回傳一個標籤：positive, neutral, negative, angry"}
-            ],
-            max_tokens=10,
-            temperature=0
-        )
-        return resp.choices[0].message.content.strip().lower()
-# 參考（Prompt 設計）：https://platform.openai.com/docs/guides/prompt-engineering
+        return completion.choices[0].message.content.strip().lower()
+    except Exception as e:
+        print(f"OpenAI 情感分析失敗: {e}")
+        # OpenAI 失敗時使用 Groq
+        messages = [
+            {"role": "system", "content": "你是一個情感分析助手，輸出文字情緒標籤"},
+            {"role": "user", "content": f"判斷這句話的情緒：{text}\n只回傳一個標籤：positive, neutral, negative, angry"}
+        ]
+        result = groq_chat_completion(messages, max_tokens=10, temperature=0)
+        return result.strip().lower() if result else "neutral"
 
 # ============================================
 # 一般聊天（帶入情緒標籤的 System Prompt）
@@ -166,16 +165,18 @@ async def get_reply(messages, sentiment: str = "neutral"):
     full_messages = [{"role": "system", "content": system_prompt}] + messages
 
     try:
+        # 首先尝试 OpenAI
         completion = await client.chat.completions.create(
-            model="gpt-4o-mini", messages=full_messages, max_tokens=800, temperature=0.7
+            model="gpt-4o-mini", 
+            messages=full_messages, 
+            max_tokens=800, 
+            temperature=0.7
         )
         return completion.choices[0].message.content
-    except Exception:
-        # -- 修改：失敗時走 Groq 集中函式（已用現行型號）
-        return _groq_chat(messages=full_messages, max_tokens=2000, temperature=0.7)
-# 參考：Chat Completions（OpenAI / Groq）
-# https://platform.openai.com/docs/api-reference/chat
-# https://console.groq.com/docs/text-chat
+    except Exception as e:
+        print(f"OpenAI 回覆失敗: {e}")
+        # OpenAI 失敗時使用 Groq
+        return groq_chat_completion(full_messages, max_tokens=800, temperature=0.7)
 
 # ============================================
 # 其他工具
@@ -268,7 +269,7 @@ async def handle_message_async(event):
         elif stock_symbol:
             reply_text = stock_gpt(stock_symbol.group())
         else:
-            # -- 新增：情感分析 → 帶情緒產生回覆（避免每次都中性）
+            # 情感分析 → 帶情緒產生回覆
             sentiment = await analyze_sentiment(msg)
             reply_text = await get_reply(conversation_history[user_id][-MAX_HISTORY_LEN:], sentiment=sentiment)
     except Exception as e:
